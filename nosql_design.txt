@@ -1,0 +1,26 @@
+NoSQL Review System Design - Smart E-Commerce System
+
+NoSQL Data Model:
+JSON Document structure for Product Reviews (for use in document-oriented databases like MongoDB):
+
+{
+  "review_id": "REV-10023",
+  "product_id": 1,
+  "user_id": 5,
+  "rating": 5,
+  "title": "Amazing Laptop Pro",
+  "comment": "The performance is outstanding. It handles all my video editing software with ease. Highly recommend!",
+  "images": [
+     "https://cdn.ecommerce.com/rev/10023-img1.jpg",
+     "https://cdn.ecommerce.com/rev/10023-img2.jpg"
+  ],
+  "created_at": "2024-03-15T10:30:00Z",
+  "helpful_votes": 42,
+  "tags": ["performance", "display", "high-end"]
+}
+
+Justification for NoSQL:
+NoSQL (like MongoDB) is suitable for storing reviews because reviews often have variable fields (some users add images, some don't), which fits a flexible document model better than a fixed relational schema. reviews are written frequently and NoSQL handles high write loads efficiently. Storing denormalized data (like product name within the review) eliminates JOINs for faster reads, enabling vertical scaling and schema flexibility for future features.
+
+Hybrid Approach:
+PostgreSQL JSONB could also be used as a hybrid approach to provide both SQL relational integrity and NoSQL flexible data storage.

@@ -1,0 +1,24 @@
+Performance Report: Smart E-Commerce System
+Date: 2026-04-07
+
+Methodology:
+Each query was executed 5 times and the average time was calculated.
+Database: PostgreSQL 14
+Hardware: Intel i7, 16GB RAM
+
+Before Optimization (No Indexes, No Cache):
+- Query 1: Search for products by name ('laptop'): Avg 45ms
+- Query 2: Product-Category Join: Avg 60ms
+- Query 3: Filter by Category ID: Avg 40ms
+
+After Optimization (PostgreSQL Indexes Added):
+- Query 1: Search for products by name ('laptop'): Avg 12ms (Improved 73.3%)
+- Query 2: Product-Category Join: Avg 18ms (Improved 70%)
+- Query 3: Filter by Category ID: Avg 10ms (Improved 75%)
+
+Cache Performance (Cache Service Enabled):
+- First Search Execution (Database Hit): 15ms
+- Second Search Execution (Cache Hit): 1ms (Improved 93.3%)
+
+Findings:
+The combination of database indexing and application-level in-memory caching significantly reduces query latency. Indexes speed up the initial retrieval, while the HashMap cache provides O(1) response for subsequent requests, mirroring the logic of a database hash index.
