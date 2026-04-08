@@ -1,7 +1,6 @@
 package com.ecommerce.service;
 
 import com.ecommerce.model.Product;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

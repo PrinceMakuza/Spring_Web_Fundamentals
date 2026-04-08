@@ -1,31 +1,28 @@
-Validation Report: Smart E-Commerce System
-Date: 2026-04-07
+=== VALIDATION REPORT ===
+Generated: 2026-04-08 11:53:39
 
-Test Scenarios:
+--- CRUD Operations ---
+[✓] PASS: Add product '__TEST_PRODUCT_1775642019099' - successful
+[✓] PASS: Duplicate name rejected (constraint violation)
+[✓] PASS: Update product price - successful
+[✓] PASS: Delete product - successful
+[✓] PASS: Negative price rejected (CHECK constraint)
 
-1. CRUD Operations:
-- Add Product: SUCCESS (Product added and appears in table)
-- Update Product: SUCCESS (Product price and name updated successfully)
-- Delete Product: SUCCESS (Confirmation shown, product removed)
-- Validation Checks: PASS (Negative price rejected, empty name rejected)
+--- Search Functionality ---
+[✓] PASS: Case-insensitive search returns results (ILIKE)
+[✓] PASS: Empty search returns all products (6)
+[✓] PASS: Category filter correctly filters products
 
-2. Product Viewing:
-- Data Populated: PASS (TableView displays product names, categories, and stock)
-- Pagination: PASS (Next/Previous button logic functions correctly)
-- Dynamic Refresh: PASS (Refresh table updates data from database automatically)
+--- Pagination ---
+[✓] PASS: Pagination returns correct page size (2 items on page 1)
 
-3. Search Functionality:
-- Case-Insensitive Search: PASS (Search 'laptop' vs 'Laptop' both return correct results)
-- Category Filter: PASS (Dropdown correctly filters products by selected category)
-- Empty Search: PASS (Returns all products as expected)
+--- Cache Behavior ---
+[✓] PASS: Cache hit (0ms vs 1ms)
 
-4. Cache Validation:
-- Initial Hit: PASS (Database call confirmed via logs)
-- Subsequent Hit: PASS (Search result fetched from cache with 1ms response)
-- Invalidation: PASS (Updating product clears cache, new data shows up)
+--- Data Integrity Constraints ---
+[✓] PASS: Foreign key constraint enforced
+[✓] PASS: NOT NULL constraint enforced on product name
+[✓] PASS: CHECK constraint (rating 1-5) enforced
 
-5. Data Integrity:
-- Foreign Keys: PASS (Categories with dependencies cannot be deleted)
-- Constraints: PASS (Checked price >= 0 and quantity >= 0)
-
-All core functionalities are PASSING based on current system state.
+=== SUMMARY: 13 PASSED, 0 FAILED ===
+=== ALL TESTS PASSED ===

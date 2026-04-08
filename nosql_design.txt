@@ -1,26 +1,103 @@
-NoSQL Review System Design - Smart E-Commerce System
+NoSQL Design Document — Smart E-Commerce System
+==================================================
 
-NoSQL Data Model:
-JSON Document structure for Product Reviews (for use in document-oriented databases like MongoDB):
+1. Purpose
+----------
+This document describes a NoSQL data model for storing product reviews
+and activity logs, comparing it with the relational approach used in
+the PostgreSQL implementation.
+
+2. NoSQL Data Model (Document-Oriented — MongoDB)
+--------------------------------------------------
+
+JSON Document Structure for Reviews:
 
 {
-  "review_id": "REV-10023",
-  "product_id": 1,
+  "review_id": "REV-10023-uuid",
+  "product_id": 101,
   "user_id": 5,
-  "rating": 5,
+  "rating": 4,
   "title": "Amazing Laptop Pro",
-  "comment": "The performance is outstanding. It handles all my video editing software with ease. Highly recommend!",
+  "comment": "The performance is outstanding. Handles video editing with ease.",
   "images": [
-     "https://cdn.ecommerce.com/rev/10023-img1.jpg",
-     "https://cdn.ecommerce.com/rev/10023-img2.jpg"
+    "https://cdn.ecommerce.com/reviews/rev-10023-img1.jpg",
+    "https://cdn.ecommerce.com/reviews/rev-10023-img2.jpg"
   ],
-  "created_at": "2024-03-15T10:30:00Z",
   "helpful_votes": 42,
-  "tags": ["performance", "display", "high-end"]
+  "tags": ["performance", "display", "high-end"],
+  "verified_purchase": true,
+  "created_at": "2026-04-08T10:00:00Z",
+  "updated_at": "2026-04-08T12:30:00Z"
 }
 
-Justification for NoSQL:
-NoSQL (like MongoDB) is suitable for storing reviews because reviews often have variable fields (some users add images, some don't), which fits a flexible document model better than a fixed relational schema. reviews are written frequently and NoSQL handles high write loads efficiently. Storing denormalized data (like product name within the review) eliminates JOINs for faster reads, enabling vertical scaling and schema flexibility for future features.
+JSON Document Structure for Activity Logs:
 
-Hybrid Approach:
-PostgreSQL JSONB could also be used as a hybrid approach to provide both SQL relational integrity and NoSQL flexible data storage.
+{
+  "log_id": "LOG-20240408-uuid",
+  "user_id": 5,
+  "action": "PRODUCT_VIEW",
+  "details": {
+    "product_id": 101,
+    "product_name": "Laptop Pro",
+    "source": "search",
+    "search_term": "laptop"
+  },
+  "timestamp": "2026-04-08T14:22:00Z",
+  "session_id": "sess-abc123",
+  "ip_address": "192.168.1.100",
+  "user_agent": "Mozilla/5.0 ..."
+}
+
+3. Justification for NoSQL (Reviews & Logs)
+---------------------------------------------
+
+NoSQL document databases (like MongoDB) are better suited for reviews and
+activity logs for the following reasons:
+
+(a) FLEXIBLE SCHEMA: Reviews often have variable fields — some users attach
+    images, others don't; some include tags, helpful votes, or titles. In a
+    relational model, these optional fields would either require many nullable
+    columns or separate junction tables. A document model naturally handles
+    this variability by storing each review as a self-contained JSON document
+    with only the fields that are present.
+
+(b) HIGH WRITE VOLUME: Activity logs are written continuously as users browse,
+    search, and interact with the system. NoSQL databases are optimized for
+    high write throughput with eventual consistency, making them ideal for
+    logging scenarios where immediate strong consistency is not required.
+
+(c) DENORMALIZATION FOR READ PERFORMANCE: In the relational model, displaying
+    a review with product and user information requires JOIN operations across
+    multiple tables. In a document model, denormalized data (such as embedding
+    the product name within the review document) eliminates JOINs entirely,
+    providing faster reads for customer-facing pages where reviews are displayed.
+
+(d) HORIZONTAL SCALABILITY: As the e-commerce platform grows, the volume of
+    reviews and logs will increase rapidly. NoSQL databases support horizontal
+    scaling (sharding) more naturally than relational databases, allowing the
+    system to distribute data across multiple servers without complex
+    partitioning schemes.
+
+4. Hybrid Approach (PostgreSQL + JSONB)
+-----------------------------------------
+
+PostgreSQL supports JSONB columns, which offer a middle ground:
+- Relational integrity (foreign keys to Products and Users tables)
+- Flexible JSON storage for variable review fields
+- GIN indexes on JSONB columns for efficient querying
+
+This approach could be used when the team wants to maintain a single
+database technology while still accommodating semi-structured data.
+
+5. Comparison Summary
+---------------------
+
+| Aspect              | Relational (PostgreSQL)     | NoSQL (MongoDB)             |
+|---------------------|-----------------------------|-----------------------------|
+| Schema              | Fixed, normalized           | Flexible, denormalized      |
+| Reviews storage     | Requires nullable columns   | Natural document fit        |
+| Read performance    | JOINs required              | Single document read        |
+| Write performance   | ACID transactions           | High throughput, eventual   |
+| Scalability         | Vertical (scale up)         | Horizontal (scale out)      |
+| Data integrity      | Strong (FK, CHECK, UNIQUE)  | Application-level           |
+| Query language      | SQL                         | MongoDB Query Language      |
