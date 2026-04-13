@@ -7,6 +7,7 @@
     -fx-background-color: #1e1e2f;
     -fx-font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
     -fx-font-size: 14px;
+    -fx-text-fill: #ffffff; /* Default bright text */
 }
 
 /* === Sidebar Navigation === */
@@ -35,28 +36,23 @@
 }
 
 .sidebar-button {
+    -fx-text-fill: white;
     -fx-background-color: transparent;
-    -fx-text-fill: #a0a8c0;
     -fx-font-size: 14px;
-    -fx-padding: 14 20;
-    -fx-alignment: CENTER-LEFT;
+    -fx-padding: 12 20;
+    -fx-alignment: CENTER_LEFT;
     -fx-cursor: hand;
-    -fx-background-radius: 0;
-    -fx-border-width: 0 0 0 3;
-    -fx-border-color: transparent;
-    -fx-max-width: 1.7976931348623157E308;
+    -fx-background-radius: 5;
+    -fx-max-width: 9000;
 }
 
 .sidebar-button:hover {
-    -fx-background-color: #222240;
-    -fx-text-fill: #ffffff;
-    -fx-border-color: #4a6ea9;
+    -fx-background-color: rgba(255, 255, 255, 0.1);
 }
 
-.sidebar-button-active {
-    -fx-background-color: #1e1e3a;
-    -fx-text-fill: #ffffff;
-    -fx-border-color: #4a6ea9;
+.sidebar-button.active {
+    -fx-background-color: #4a6ea9;
+    -fx-text-fill: white;
     -fx-font-weight: bold;
 }
 
@@ -238,7 +234,7 @@
 }
 
 .table-view .column-header .label {
-    -fx-text-fill: #888aa0;
+    -fx-text-fill: #ffffff;
     -fx-font-weight: bold;
     -fx-font-size: 12px;
 }
@@ -261,7 +257,7 @@
 }
 
 .table-view .table-cell {
-    -fx-text-fill: #d0d0e0;
+    -fx-text-fill: #ffffff;
     -fx-padding: 8 12;
 }
 
@@ -328,7 +324,7 @@
 }
 
 .stat-label {
-    -fx-text-fill: #888aa0;
+    -fx-text-fill: #ffffff;
     -fx-font-size: 12px;
 }
 
@@ -471,4 +467,46 @@
 .scroll-bar .track {
     -fx-background-color: #16162a;
     -fx-border-color: transparent;
+}
+/* === TabPane High-Contrast Selection === */
+.tab-pane {
+    -fx-tab-min-width: 120;
+}
+
+.tab-pane .tab-header-area {
+    -fx-padding: 10 20 0 20;
+    -fx-background-color: #121212;
+}
+
+.tab-pane .tab {
+    -fx-background-color: transparent;
+    -fx-padding: 10 25;
+    -fx-background-radius: 5 5 0 0;
+}
+
+.tab-pane .tab:selected {
+    -fx-background-color: #4a6ea9;
+}
+
+.tab-pane .tab .tab-label {
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: normal;
+}
+
+.tab-pane .tab:selected .tab-label {
+    -fx-font-weight: bold;
+}
+
+.tab-pane .tab-header-background {
+    -fx-background-color: transparent;
+}
+
+.tab-pane .tab-header-area .tab-header-background {
+    -fx-background-color: #16162a;
+}
+
+.nav-selected {
+    -fx-background-color: #4a6ea9 !important;
+    -fx-text-fill: white !important;
 }

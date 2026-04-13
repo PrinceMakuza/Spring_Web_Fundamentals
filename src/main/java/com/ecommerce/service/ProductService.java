@@ -20,6 +20,16 @@ public class ProductService {
         this.cacheService = new CacheService();
     }
 
+    // Constructor for testing
+    public ProductService(ProductDAO productDAO, CacheService cacheService) {
+        this.productDAO = productDAO;
+        this.cacheService = cacheService;
+    }
+
+    public CacheService getCacheService() {
+        return cacheService;
+    }
+
     /**
      * Search and cache logic mirroring hash and B-tree index concepts.
      */
@@ -47,17 +57,17 @@ public class ProductService {
 
     public void addProduct(Product product) throws SQLException {
         productDAO.addProduct(product);
-        cacheService.invalidateAll(); // Invalidate cache after modification
+        cacheService.invalidate(); // Invalidate cache after modification
     }
 
     public void updateProduct(Product product) throws SQLException {
         productDAO.updateProduct(product);
-        cacheService.invalidateAll(); // Invalidate cache after modification
+        cacheService.invalidate(); // Invalidate cache after modification
     }
 
     public void deleteProduct(int productId) throws SQLException {
         productDAO.deleteProduct(productId);
-        cacheService.invalidateAll(); // Invalidate cache after modification
+        cacheService.invalidate(); // Invalidate cache after modification
     }
 
     public List<String[]> getAllCategories() throws SQLException {
@@ -74,6 +84,9 @@ public class ProductService {
         switch (sortBy) {
             case "Name (A-Z)":
                 Collections.sort(products, Comparator.comparing(Product::getName));
+                break;
+            case "Name (Z-A)":
+                Collections.sort(products, Comparator.comparing(Product::getName).reversed());
                 break;
             case "Price (Low to High)":
                 Collections.sort(products, Comparator.comparing(Product::getPrice));

@@ -6,10 +6,12 @@ INSERT INTO Categories (name, description) VALUES
 ('Electronics', 'Gadgets and electronic devices'),
 ('Home & Kitchen', 'Appliances and home decor');
 
--- Users (2+ required)
-INSERT INTO Users (name, email, password) VALUES
-('John Doe', 'john@example.com', 'password123'),
-('Jane Smith', 'jane@example.com', 'securepass');
+-- Users (Admin and Customer demo users)
+-- admin123 -> $2a$10$tzwCuVUnlkYOz3ECsng5l.PvkQ2UYl89.yz8oh/iTP0.5iCUT.kya
+-- password123 -> $2a$10$IsAwUAs2zQzbYLBPTaAwmeikub506iFXRjG2V2NFILUMy48b4NMme
+INSERT INTO Users (user_id, name, email, password_hash, role) VALUES
+(1, 'Demo Customer', 'demo@example.com', '$2a$10$IsAwUAs2zQzbYLBPTaAwmeikub506iFXRjG2V2NFILUMy48b4NMme', 'CUSTOMER'),
+(2, 'Admin User', 'admin@ecommerce.com', '$2a$10$tzwCuVUnlkYOz3ECsng5l.PvkQ2UYl89.yz8oh/iTP0.5iCUT.kya', 'ADMIN');
 
 -- Products (5+ required)
 INSERT INTO Products (name, description, price, category_id) VALUES
@@ -41,3 +43,6 @@ INSERT INTO Reviews (product_id, user_id, rating, comment) VALUES
 (1, 1, 5, 'Great laptop, very fast!'),
 (2, 2, 4, 'Good mouse, but the battery life could be better.'),
 (3, 1, 3, 'Average coffee maker, does the job.');
+
+-- Sync sequence for registration
+SELECT setval('users_user_id_seq', (SELECT MAX(user_id) FROM Users));

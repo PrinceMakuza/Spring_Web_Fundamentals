@@ -1,11 +1,11 @@
 === PERFORMANCE REPORT ===
-Generated: 2026-04-08 11:53:42
+Generated: 2026-04-12 23:11:15
 Methodology: Each query executed 5 times, average reported.
 Database: PostgreSQL
 
 QUERY 1: Search by name 'laptop'
-  With indexes: 0.2ms avg
-  (Without indexes estimated: 1.6ms avg)
+  With indexes: 0.6ms avg
+  (Without indexes estimated: 4.8ms avg)
   Improvement: ~87.5%
 
 QUERY 2: Product-Category JOIN
@@ -14,13 +14,17 @@ QUERY 2: Product-Category JOIN
   Improvement: ~83.3%
 
 QUERY 3: Filter by category ID
-  With indexes: 0.8ms avg
-  (Without indexes estimated: 5.6ms avg)
+  With indexes: 1.0ms avg
+  (Without indexes estimated: 7.0ms avg)
   Improvement: ~85.7%
 
 CACHE TEST:
   First call (DB): 0ms
   Second call (cache): 0ms
+
+INTERNAL CACHE STATS (Memory-level Hash Index Concept):
+  Total Cache Hits: 1
+  Total Cache Misses: 1
 
 Findings:
 The combination of database indexing and application-level in-memory caching

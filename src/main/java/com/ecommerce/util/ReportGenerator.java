@@ -59,6 +59,10 @@ public class ReportGenerator {
         testCaseInsensitiveSearch();
         testEmptySearchReturnsAll();
         testCategoryFilter();
+        
+        // 3. Cart & Checkout Tests
+        report.append("\n--- Cart & Checkout ---\n");
+        testCartAndCheckout();
 
         // 3. Pagination Test
         report.append("\n--- Pagination ---\n");
@@ -156,8 +160,14 @@ public class ReportGenerator {
             perfReport.append(String.format("  Second call (cache): %dms%n", secondCall));
             if (firstCall > 0) {
                 double improvement = (1.0 - (double) secondCall / firstCall) * 100;
-                perfReport.append(String.format("  Improvement: %.1f%%%n", improvement));
+                perfReport.append(String.format("  Improvement (Time): %.1f%%%n", improvement));
             }
+            
+            // Add internal cache metrics
+            perfReport.append("\nINTERNAL CACHE STATS (Memory-level Hash Index Concept):\n");
+            perfReport.append(String.format("  Total Cache Hits: %d%n", svc.getCacheService().getHits()));
+            perfReport.append(String.format("  Total Cache Misses: %d%n", svc.getCacheService().getMisses()));
+            
         } catch (SQLException e) {
             perfReport.append("  ERROR: ").append(e.getMessage()).append("\n");
         }
@@ -408,6 +418,50 @@ public class ReportGenerator {
             }
         } catch (SQLException e) {
             pass("CHECK constraint (rating 1-5) enforced");
+        }
+    }
+
+    private void testCartAndCheckout() {
+        try {
+            int userId = com.ecommerce.util.UserContext.getCurrentUserId();
+            com.ecommerce.service.CartService cartService = new com.ecommerce.service.CartService();
+            com.ecommerce.service.OrderService orderService = new com.ecommerce.service.OrderService();
+
+            // 1. Test Proactive Stock Validation
+            try {
+                cartService.addToCart(userId, 1, 9999); // Impossible quantity
+                fail("Proactive Stock: Failed to reject impossible quantity");
+            } catch (SQLException e) {
+                pass("Proactive Stock: Correctly rejected quantity > stock (" + e.getMessage() + ")");
+            }
+
+            // 2. Add valid item
+            cartService.addToCart(userId, 1, 1); 
+            pass("Cart: Add 1 valid item for demo user");
+
+            // 3. Checkout
+            boolean success = cartService.checkout(userId);
+            if (success) {
+                pass("Checkout: Transaction successful");
+                
+                // 4. Verify order history and status
+                List<com.ecommerce.model.Order> orders = orderService.getUserOrderHistory(userId);
+                if (!orders.isEmpty()) {
+                    com.ecommerce.model.Order latest = orders.get(0);
+                    if ("COMPLETED".equals(latest.getStatus())) {
+                        pass("Order Status: Correctly marked as 'COMPLETED'");
+                    } else {
+                        fail("Order Status: Expected 'COMPLETED', found '" + latest.getStatus() + "'");
+                    }
+                    pass("Order History: New order found (" + orders.size() + " total)");
+                } else {
+                    fail("Order History: Order NOT found after checkout");
+                }
+            } else {
+                fail("Checkout: Transaction failed");
+            }
+        } catch (Exception e) {
+            fail("Cart & Checkout - " + e.getMessage());
         }
     }
 

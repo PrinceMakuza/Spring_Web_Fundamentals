@@ -3,7 +3,6 @@ package com.ecommerce.controller;
 import com.ecommerce.model.Category;
 import com.ecommerce.model.Product;
 import com.ecommerce.service.ProductService;
-import com.ecommerce.dao.CategoryDAO;
 import com.ecommerce.util.PerformanceMonitor;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -12,8 +11,6 @@ import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.SimpleObjectProperty;
-
 import java.sql.SQLException;
 import java.util.List;
 
@@ -27,7 +24,8 @@ import java.util.List;
  */
 public class ProductController extends VBox {
     private final ProductService productService;
-    private final CategoryDAO categoryDAO;
+    private final com.ecommerce.service.CartService cartService;
+    private final com.ecommerce.dao.CategoryDAO categoryDAO;
     private final TableView<Product> productTable;
     private final TextField searchField;
     private final ComboBox<String> categoryFilter;
@@ -38,13 +36,14 @@ public class ProductController extends VBox {
     private final ObservableList<Product> productList = FXCollections.observableArrayList();
 
     private int currentPage = 1;
-    private final int pageSize = 10;
+    private final int pageSize = 500;
     private int totalProducts = 0;
     private List<Category> categories;
 
     public ProductController() {
         this.productService = new ProductService();
-        this.categoryDAO = new CategoryDAO();
+        this.cartService = new com.ecommerce.service.CartService();
+        this.categoryDAO = new com.ecommerce.dao.CategoryDAO();
         this.setSpacing(20);
         this.setPadding(new Insets(0));
         this.getStyleClass().add("main-content");
@@ -74,9 +73,13 @@ public class ProductController extends VBox {
         categoryFilter.setPrefWidth(180);
 
         sortCombo = new ComboBox<>();
-        sortCombo.getItems().addAll("Name (A-Z)", "Price (Low to High)", "Price (High to Low)");
+        sortCombo.getItems().addAll("Name (A-Z)", "Name (Z-A)", "Price (Low to High)", "Price (High to Low)");
         sortCombo.setValue("Name (A-Z)");
         sortCombo.setPrefWidth(180);
+
+        // Reactive Filters: Instant updates on selection change
+        categoryFilter.setOnAction(e -> { currentPage = 1; loadData(); });
+        sortCombo.setOnAction(e -> { currentPage = 1; loadData(); });
 
         Button searchBtn = new Button("🔍  Search");
         searchBtn.getStyleClass().add("button-primary");
@@ -192,12 +195,69 @@ public class ProductController extends VBox {
         catCol.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getCategoryName()));
         catCol.setPrefWidth(140);
 
-        TableColumn<Product, Integer> stockCol = new TableColumn<>("Stock");
-        stockCol.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue().getStockQuantity()));
-        stockCol.setPrefWidth(80);
-        stockCol.setStyle("-fx-alignment: CENTER;");
+        TableColumn<Product, String> stockStatusCol = new TableColumn<>("Stock");
+        stockStatusCol.setCellValueFactory(data -> new SimpleStringProperty(String.valueOf(data.getValue().getStockQuantity())));
+        stockStatusCol.setPrefWidth(140);
+        stockStatusCol.setCellFactory(column -> new TableCell<Product, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    int stock = Integer.parseInt(item);
+                    if (stock <= 0) setStyle("-fx-text-fill: #e05555; -fx-font-weight: bold;");
+                    else if (stock < 5) setStyle("-fx-text-fill: #fbbf24; -fx-font-weight: bold;");
+                    else setStyle("-fx-text-fill: #38b86c; -fx-font-weight: bold;");
+                }
+            }
+        });
 
-        productTable.getColumns().addAll(nameCol, descCol, priceCol, catCol, stockCol);
+        TableColumn<Product, String> ratingCol = new TableColumn<>("Rating");
+        ratingCol.setPrefWidth(120);
+        ratingCol.setCellValueFactory(data -> new SimpleStringProperty("⭐".repeat(3 + (data.getValue().getProductId() % 3)))); // Demo rating
+        ratingCol.setCellFactory(column -> new TableCell<Product, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Hyperlink link = new Hyperlink(item);
+                    link.setStyle("-fx-text-fill: #fbbf24; -fx-underline: false;");
+                    link.setOnAction(e -> {
+                        Product p = getTableView().getItems().get(getIndex());
+                        new ReviewDialog(p.getProductId(), p.getName()).show();
+                    });
+                    setGraphic(link);
+                }
+            }
+        });
+
+        TableColumn<Product, Void> actionCol = new TableColumn<>("Action");
+        actionCol.setPrefWidth(140);
+        actionCol.setCellFactory(param -> new TableCell<>() {
+            private final Button cartBtn = new Button("Add to Cart");
+            private final HBox container = new HBox(5, cartBtn);
+            {
+                cartBtn.getStyleClass().add("button-success");
+                cartBtn.setStyle("-fx-font-size: 11px; -fx-padding: 5 10;");
+                cartBtn.setOnAction(event -> handleAddToCart(getTableView().getItems().get(getIndex())));
+                container.setAlignment(Pos.CENTER);
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) setGraphic(null);
+                else setGraphic(container);
+            }
+        });
+
+        productTable.getColumns().addAll(nameCol, descCol, priceCol, catCol, stockStatusCol, actionCol, ratingCol);
         productTable.setItems(productList);
         productTable.setPlaceholder(new Label("No products found. Try adjusting your search."));
     }
@@ -277,6 +337,23 @@ public class ProductController extends VBox {
      */
     public void refreshData() {
         loadData();
+    }
+
+    private void handleAddToCart(Product product) {
+        if (product.getStockQuantity() <= 0) {
+            showError("Out of Stock", "This product is currently unavailable.");
+            return;
+        }
+        try {
+            cartService.addToCart(com.ecommerce.util.UserContext.getCurrentUserId(), product.getProductId(), 1);
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Success");
+            alert.setHeaderText(null);
+            alert.setContentText(product.getName() + " added to your cart!");
+            alert.show();
+        } catch (java.sql.SQLException e) {
+            showError("Cart Error", "Failed to add item to cart: " + e.getMessage());
+        }
     }
 
     private void showError(String title, String content) {

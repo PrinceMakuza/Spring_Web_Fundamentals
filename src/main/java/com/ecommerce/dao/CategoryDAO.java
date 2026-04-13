@@ -15,7 +15,7 @@ public class CategoryDAO {
      * Retrieves all categories ordered by name.
      */
     public List<Category> getAllCategories() throws SQLException {
-        String sql = "SELECT category_id, name, description FROM Categories ORDER BY name";
+        String sql = "SELECT category_id, name, description FROM Categories ORDER BY category_id ASC";
         List<Category> categories = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);

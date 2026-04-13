@@ -29,7 +29,7 @@ public class ProductDAO {
                      "FROM Products p " +
                      "JOIN Categories c ON p.category_id = c.category_id " +
                      "LEFT JOIN Inventory i ON p.product_id = i.product_id " +
-                     "ORDER BY p.product_id " +
+                     "ORDER BY p.product_id ASC " +
                      "LIMIT ? OFFSET ?";
 
         List<Product> products = new ArrayList<>();
@@ -68,7 +68,7 @@ public class ProductDAO {
             sql.append("AND p.category_id = ? ");
         }
 
-        sql.append("ORDER BY p.product_id LIMIT ? OFFSET ?");
+        sql.append("ORDER BY p.product_id ASC LIMIT ? OFFSET ?");
 
         List<Product> products = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection();
@@ -227,11 +227,30 @@ public class ProductDAO {
     }
 
     /**
+     * Retrieves a single product by ID, including stock.
+     */
+    public Product getProductById(int productId) throws SQLException {
+        String sql = "SELECT p.*, c.name as category_name, COALESCE(i.quantity_on_hand, 0) as quantity_on_hand " +
+                     "FROM Products p " +
+                     "JOIN Categories c ON p.category_id = c.category_id " +
+                     "LEFT JOIN Inventory i ON p.product_id = i.product_id " +
+                     "WHERE p.product_id = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, productId);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) return mapResultSetToProduct(rs);
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns all categories as String arrays [id, name].
      * Kept for backward compatibility with services that don't use Category model.
      */
     public List<String[]> getAllCategories() throws SQLException {
-        String sql = "SELECT category_id, name FROM Categories ORDER BY name";
+        String sql = "SELECT category_id, name FROM Categories ORDER BY category_id ASC";
         List<String[]> categories = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
