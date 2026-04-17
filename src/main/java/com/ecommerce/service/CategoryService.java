@@ -1,0 +1,66 @@
+package com.ecommerce.service;
+
+import com.ecommerce.dto.CategoryDTO;
+import com.ecommerce.model.Category;
+import com.ecommerce.repository.CategoryRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class CategoryService {
+    private final CategoryRepository categoryRepository;
+
+    public CategoryService(CategoryRepository categoryRepository) {
+        this.categoryRepository = categoryRepository;
+    }
+
+    public List<Category> getAllCategories() {
+        return categoryRepository.findAll();
+    }
+
+    public Page<Category> getCategories(int page, int size, String sortBy, String sortDir, String name) {
+        // Map 'date' to 'createdAt' for sorting
+        String sortField = sortBy.equalsIgnoreCase("date") ? "createdAt" : sortBy;
+        Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortField).ascending() : Sort.by(sortField).descending();
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        if (name != null && !name.isEmpty()) {
+            return categoryRepository.findAll((root, query, cb) ->
+                    cb.like(cb.lower(root.get("name")), "%" + name.toLowerCase() + "%"), pageable);
+        }
+        return categoryRepository.findAll(pageable);
+    }
+
+    public Optional<Category> getCategoryById(int id) {
+        return categoryRepository.findById(id);
+    }
+
+    @Transactional
+    public Category createCategory(CategoryDTO dto) {
+        Category category = new Category();
+        category.setName(dto.name());
+        category.setDescription(dto.description());
+        return categoryRepository.save(category);
+    }
+
+    @Transactional
+    public Category updateCategory(int id, CategoryDTO dto) {
+        return categoryRepository.findById(id).map(cat -> {
+            cat.setName(dto.name());
+            cat.setDescription(dto.description());
+            return categoryRepository.save(cat);
+        }).orElseThrow(() -> new RuntimeException("Category not found with id: " + id));
+    }
+
+    @Transactional
+    public void deleteCategory(int id) {
+        categoryRepository.deleteById(id);
+    }
+}

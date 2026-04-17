@@ -20,6 +20,7 @@
         </padding>
         <TextField fx:id="searchField" onKeyReleased="#filterAndDisplay" prefWidth="250.0" promptText="🔍 Search items in cart..." />
         <ComboBox fx:id="sortCombo" onAction="#filterAndDisplay" prefWidth="180.0" promptText="Sort By" />
+        <Button onAction="#loadCart" styleClass="button-primary" text="🔄 Refresh" />
     </HBox>
 
     <!-- Items Container -->

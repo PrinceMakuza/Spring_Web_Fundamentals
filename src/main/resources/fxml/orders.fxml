@@ -24,6 +24,7 @@
         </padding>
         <TextField fx:id="searchField" onKeyReleased="#filterAndDisplay" prefWidth="220.0" promptText="🔍 Search by Order ID..." />
         <ComboBox fx:id="sortCombo" onAction="#filterAndDisplay" prefWidth="180.0" promptText="Sort By" />
+        <Button onAction="#loadOrders" styleClass="button-secondary" text="🔄 Refresh" />
     </HBox>
 
     <!-- Orders Container -->

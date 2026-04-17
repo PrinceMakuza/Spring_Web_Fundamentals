@@ -1,0 +1,11 @@
+spring:
+  profiles:
+    active: dev
+  graphql:
+    graphiql:
+      enabled: true
+    schema:
+      printer:
+        enabled: true
+server:
+  port: 8080

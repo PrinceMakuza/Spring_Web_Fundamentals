@@ -39,8 +39,8 @@
                 </HBox>
 
                 <HBox alignment="CENTER_LEFT" spacing="12.0">
-<!--                    <Button onAction="#handleSearch" styleClass="button-primary" text="🔍  Search" />-->
-                    <Button onAction="#handleClearFilters" text="Clear" />
+                    <Button onAction="#handleClearFilters" styleClass="button-secondary" text="Clear Filters" />
+                    <Button onAction="#handleSearch" styleClass="button-primary" text="🔄 Refresh" />
                 </HBox>
 
                 <HBox alignment="CENTER_LEFT" spacing="20.0">

@@ -1,14 +1,42 @@
 package com.ecommerce.model;
 
+import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
+
 /**
  * User model representing a system user with RBAC.
  */
+@Entity
+@Table(name = "users")
 public class User {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int userId;
+
+    @Column(updatable = false)
+    private java.time.LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = java.time.LocalDateTime.now();
+    }
+
+    @NotBlank(message = "Name is required")
     private String name;
+
+    @Email(message = "Invalid email format")
+    @NotBlank(message = "Email is required")
+    @Column(unique = true, nullable = false)
     private String email;
+
+    @NotBlank(message = "Role is required")
     private String role; // ADMIN or CUSTOMER
+
+    @Size(min = 6, message = "Password must be at least 6 characters")
+    @NotBlank(message = "Password is required")
+    @Column(name = "password_hash", nullable = false)
     private String password;
+
     private String location;
 
     public User() {}
@@ -38,4 +66,6 @@ public class User {
 
     public String getLocation() { return location; }
     public void setLocation(String location) { this.location = location; }
+
+    public java.time.LocalDateTime getCreatedAt() { return createdAt; }
 }

@@ -3,7 +3,9 @@ package com.ecommerce.controller;
 import com.ecommerce.model.Order;
 import com.ecommerce.model.OrderItem;
 import com.ecommerce.service.OrderService;
+import com.ecommerce.util.SpringContextBridge;
 import com.ecommerce.util.UserContext;
+import com.ecommerce.util.DataEventBus;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
@@ -23,7 +25,7 @@ import java.util.stream.Collectors;
  * Refactored for FXML compatibility and clean orchestration.
  */
 public class OrderHistoryController {
-    private final OrderService orderService = new OrderService();
+    private final OrderService orderService = SpringContextBridge.getBean(OrderService.class);
     
     @FXML private VBox ordersContainer;
     @FXML private TextField searchField;
@@ -37,14 +39,20 @@ public class OrderHistoryController {
         if (sortCombo != null) {
             sortCombo.setItems(FXCollections.observableArrayList("Date (Newest)", "Date (Oldest)", "Amount (High)", "Amount (Low)"));
         }
+        
+        // Subscribe to real-time events
+        DataEventBus.subscribe(this::loadOrders);
+        
         loadOrders();
     }
 
+    @FXML
     public void loadOrders() {
         try {
-            allOrders = orderService.getUserOrderHistory(UserContext.getCurrentUserId());
+            if (searchField != null) searchField.clear();
+            allOrders = orderService.getUserOrders(UserContext.getCurrentUserId());
             filterAndDisplay();
-        } catch (SQLException e) {
+        } catch (Exception e) {
             showError("Load Error", e.getMessage());
         }
     }
@@ -129,7 +137,8 @@ public class OrderHistoryController {
 
     private void fetchOrderDetails(int orderId, VBox container) {
         try {
-            List<OrderItem> items = orderService.getOrderDetails(orderId);
+            Order order = orderService.getOrderDetails(orderId);
+            List<OrderItem> items = order.getItems();
             for (OrderItem item : items) {
                 HBox row = new HBox(10);
                 Label name = new Label(item.getProductName());
@@ -147,7 +156,7 @@ public class OrderHistoryController {
                 row.getChildren().addAll(name, qty, price);
                 container.getChildren().add(row);
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             container.getChildren().add(new Label("Error: " + e.getMessage()));
         }
     }

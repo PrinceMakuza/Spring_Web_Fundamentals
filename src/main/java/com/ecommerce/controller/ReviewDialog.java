@@ -1,7 +1,12 @@
 package com.ecommerce.controller;
 
-import com.ecommerce.dao.ReviewDAO;
 import com.ecommerce.model.Review;
+import com.ecommerce.model.Product;
+import com.ecommerce.model.User;
+import com.ecommerce.repository.ReviewRepository;
+import com.ecommerce.repository.ProductRepository;
+import com.ecommerce.repository.UserRepository;
+import com.ecommerce.util.SpringContextBridge;
 import com.ecommerce.util.UserContext;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -10,14 +15,15 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
-import java.sql.SQLException;
 import java.util.List;
 
 /**
  * ReviewDialog provides a UI for viewing and submitting product reviews.
  */
 public class ReviewDialog {
-    private final ReviewDAO reviewDAO = new ReviewDAO();
+    private final ReviewRepository reviewRepository = SpringContextBridge.getBean(ReviewRepository.class);
+    private final ProductRepository productRepository = SpringContextBridge.getBean(ProductRepository.class);
+    private final UserRepository userRepository = SpringContextBridge.getBean(UserRepository.class);
     private final int productId;
     private final String productName;
 
@@ -68,18 +74,24 @@ public class ReviewDialog {
         submitBtn.getStyleClass().add("button-primary");
         submitBtn.setOnAction(e -> {
             try {
+                Product product = productRepository.findById(productId)
+                        .orElseThrow(() -> new RuntimeException("Product not found"));
+                User user = userRepository.findById(UserContext.getCurrentUserId())
+                        .orElseThrow(() -> new RuntimeException("User not found"));
+
                 Review r = new Review();
-                r.setProductId(productId);
-                r.setUserId(UserContext.getCurrentUserId());
+                r.setProduct(product);
+                r.setUser(user);
                 r.setRating(ratingCombo.getValue());
                 r.setComment(commentArea.getText().trim());
-                reviewDAO.addReview(r);
+                reviewRepository.save(r);
                 
                 commentArea.clear();
-                loadReviews(reviewsBox); // Refresh
+                loadReviews(reviewsBox); // Refresh locally
+                com.ecommerce.util.DataEventBus.publish(); // Notify other views (admin reviews table, etc)
                 Alert alert = new Alert(Alert.AlertType.INFORMATION, "Review submitted successfully!");
                 alert.show();
-            } catch (SQLException ex) {
+            } catch (Exception ex) {
                 Alert alert = new Alert(Alert.AlertType.ERROR, "Failed to submit review: " + ex.getMessage());
                 alert.show();
             }
@@ -105,7 +117,9 @@ public class ReviewDialog {
             container.getChildren().add(title);
 
             try {
-                List<Review> reviews = reviewDAO.getReviewsByProduct(productId);
+                Product product = productRepository.findById(productId)
+                        .orElseThrow(() -> new RuntimeException("Product not found"));
+                List<Review> reviews = reviewRepository.findByProduct(product);
                 if (reviews.isEmpty()) {
                     container.getChildren().add(new Label("No reviews yet. Be the first to review!"));
                 } else {
@@ -121,7 +135,7 @@ public class ReviewDialog {
                         Label comment = new Label(r.getComment());
                         comment.setWrapText(true);
                         
-                        Label date = new Label(r.getReviewDate().toString().split("T")[0]);
+                        Label date = new Label(r.getReviewDate() != null ? r.getReviewDate().toString().split("T")[0] : "New");
                         date.getStyleClass().add("label-muted");
                         date.setStyle("-fx-font-size: 10px;");
                         
@@ -129,7 +143,7 @@ public class ReviewDialog {
                         container.getChildren().add(rCard);
                     }
                 }
-            } catch (SQLException e) {
+            } catch (Exception e) {
                 container.getChildren().add(new Label("Error loading reviews."));
             }
         });

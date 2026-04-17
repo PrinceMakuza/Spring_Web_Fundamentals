@@ -5,12 +5,13 @@ import com.ecommerce.model.Product;
 import com.ecommerce.model.User;
 import com.ecommerce.model.Order;
 import com.ecommerce.model.Review;
-import com.ecommerce.service.ProductService;
-import com.ecommerce.dao.CategoryDAO;
-import com.ecommerce.dao.UserDAO;
-import com.ecommerce.dao.OrderDAO;
-import com.ecommerce.dao.ReviewDAO;
-import com.ecommerce.dao.DatabaseConnection;
+import com.ecommerce.service.SpringProductService;
+import com.ecommerce.service.CategoryService;
+import com.ecommerce.service.UserService;
+import com.ecommerce.service.OrderService;
+import com.ecommerce.repository.ReviewRepository;
+import com.ecommerce.util.SpringContextBridge;
+import com.ecommerce.util.DataEventBus;
 import com.ecommerce.service.ReportService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -38,12 +39,12 @@ import java.util.stream.Collectors;
  * Updated to fully implement search and sort logic across all management panels.
  */
 public class AdminController {
-    private final ProductService productService = new ProductService();
-    private final CategoryDAO categoryDAO = new CategoryDAO();
-    private final UserDAO userDAO = new UserDAO();
-    private final OrderDAO orderDAO = new OrderDAO();
-    private final ReviewDAO reviewDAO = new ReviewDAO();
-    private final ReportService reportService = new ReportService();
+    private final SpringProductService productService = SpringContextBridge.getBean(SpringProductService.class);
+    private final CategoryService categoryService = SpringContextBridge.getBean(CategoryService.class);
+    private final UserService userService = SpringContextBridge.getBean(UserService.class);
+    private final OrderService orderService = SpringContextBridge.getBean(OrderService.class);
+    private final ReviewRepository reviewRepository = SpringContextBridge.getBean(ReviewRepository.class);
+    private final ReportService reportService = SpringContextBridge.getBean(ReportService.class);
 
     @FXML private HBox toggleBar;
     @FXML private StackPane contentPane;
@@ -56,7 +57,7 @@ public class AdminController {
     private final ObservableList<Review> reviewList = FXCollections.observableArrayList();
 
     private TextField productSearch, catSearch, userSearch, orderSearch, reviewSearch, invSearch;
-    private ComboBox<String> productSort, userSort, orderSort, reviewSort, invSort;
+    private ComboBox<String> productSort, catSort, userSort, orderSort, reviewSort, invSort;
     private List<Category> categories;
 
     private VBox prodPanel, catPanel, userPanel, orderPanel, reviewPanel, invPanel, reportPanel;
@@ -73,7 +74,17 @@ public class AdminController {
         
         contentPane.getChildren().addAll(prodPanel, catPanel, userPanel, orderPanel, reviewPanel, invPanel, reportPanel);
         showProducts();
+        
+        // Subscribe to real-time events
+        DataEventBus.subscribe(this::loadAllData);
+    }
+
+    private void loadAllData() {
         loadInitialData();
+        loadUsers();
+        applyOrderFilters();
+        loadInventory();
+        applyReviewFilters();
     }
 
     @FXML private void showProducts() { switchTab(prodPanel, prodBtn); loadInitialData(); }
@@ -99,7 +110,6 @@ public class AdminController {
         Button add = new Button("➕ Add New Product"); add.getStyleClass().add("button-success");
         Button edit = new Button("✏ Edit Selected"); edit.getStyleClass().add("button-primary");
         Button del = new Button("🗑 Delete Selected"); del.getStyleClass().add("button-danger");
-        Button seed = new Button("🌱 Seed Samples"); seed.getStyleClass().add("button-warning");
         
         Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
         productSearch = new TextField(); productSearch.setPromptText("🔍 Search products...");
@@ -109,13 +119,17 @@ public class AdminController {
         productSort.setValue("ID (Oldest First)");
         productSort.setOnAction(e -> loadInitialData());
 
-        bar.getChildren().addAll(add, edit, del, seed, spacer, productSearch, productSort);
+        Button refresh = new Button("🔄");
+        refresh.setOnAction(e -> {
+            productSearch.clear();
+            loadInitialData();
+        });
+        bar.getChildren().addAll(add, edit, del, spacer, productSearch, productSort, refresh);
         TableView<Product> table = createProductTable();
         add.setOnAction(e -> handleProductDialog(null));
         edit.setOnAction(e -> { Product s = table.getSelectionModel().getSelectedItem(); if (s != null) handleProductDialog(s); });
         del.setOnAction(e -> { Product s = table.getSelectionModel().getSelectedItem(); if (s != null) handleDeleteProduct(s); });
-        seed.setOnAction(e -> handleSeedData());
-
+        VBox.setVgrow(table, Priority.ALWAYS);
         panel.getChildren().addAll(bar, table);
         return panel;
     }
@@ -129,13 +143,24 @@ public class AdminController {
         
         Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
         catSearch = new TextField(); catSearch.setPromptText("🔍 Search categories...");
-        bar.getChildren().addAll(add, edit, del, spacer, catSearch);
+        catSearch.textProperty().addListener((o, ov, nv) -> loadInitialData());
+
+        catSort = new ComboBox<>(FXCollections.observableArrayList("ID ASC", "ID DESC", "Name A-Z", "Name Z-A"));
+        catSort.setValue("ID ASC");
+        catSort.setOnAction(e -> loadInitialData());
+
+        Button refresh = new Button("🔄");
+        refresh.setOnAction(e -> {
+            catSearch.clear();
+            loadInitialData();
+        });
+        bar.getChildren().addAll(add, edit, del, spacer, catSearch, catSort, refresh);
 
         TableView<Category> table = createCategoryTable();
         add.setOnAction(e -> handleCategoryDialog(null));
         edit.setOnAction(e -> { Category s = table.getSelectionModel().getSelectedItem(); if (s != null) handleCategoryDialog(s); });
         del.setOnAction(e -> { Category s = table.getSelectionModel().getSelectedItem(); if (s != null) handleDeleteCategory(s); });
-
+        VBox.setVgrow(table, Priority.ALWAYS);
         panel.getChildren().addAll(bar, table);
         return panel;
     }
@@ -149,16 +174,22 @@ public class AdminController {
         
         Region spacer = new Region(); HBox.setHgrow(spacer, Priority.ALWAYS);
         userSearch = new TextField(); userSearch.setPromptText("🔍 Search users by name/email...");
-        userSort = new ComboBox<>(FXCollections.observableArrayList("ID ASC", "ID DESC", "Name A-Z", "Role"));
+        userSort = new ComboBox<>(FXCollections.observableArrayList("ID ASC", "ID DESC", "Name A-Z", "Name Z-A", "Role"));
         userSort.setValue("ID ASC");
 
-        bar.getChildren().addAll(add, edit, del, spacer, userSearch, userSort);
+        userSort.setOnAction(e -> loadUsers());
+        Button refresh = new Button("🔄");
+        refresh.setOnAction(e -> {
+            userSearch.clear();
+            loadUsers();
+        });
+        bar.getChildren().addAll(add, edit, del, spacer, userSearch, userSort, refresh);
 
         TableView<User> table = createUserTable();
         add.setOnAction(e -> handleUserDialog(null));
         edit.setOnAction(e -> { User s = table.getSelectionModel().getSelectedItem(); if (s != null) handleUserDialog(s); });
         del.setOnAction(e -> { User s = table.getSelectionModel().getSelectedItem(); if (s != null) handleDeleteUser(s); });
-
+        VBox.setVgrow(table, Priority.ALWAYS);
         panel.getChildren().addAll(bar, table);
         return panel;
     }
@@ -175,8 +206,15 @@ public class AdminController {
         orderSort.setValue("Date (Newest)");
         orderSort.setOnAction(e -> applyOrderFilters());
 
-        bar.getChildren().addAll(lbl, spacer, orderSearch, orderSort);
-        panel.getChildren().addAll(bar, createOrderTable());
+        Button refresh = new Button("🔄");
+        refresh.setOnAction(e -> {
+            orderSearch.clear();
+            applyOrderFilters();
+        });
+        bar.getChildren().addAll(lbl, spacer, orderSearch, orderSort, refresh);
+        TableView<Order> table = createOrderTable();
+        VBox.setVgrow(table, Priority.ALWAYS);
+        panel.getChildren().addAll(bar, table);
         return panel;
     }
 
@@ -192,8 +230,15 @@ public class AdminController {
         reviewSort.setValue("Rating (High)");
         reviewSort.setOnAction(e -> applyReviewFilters());
 
-        bar.getChildren().addAll(lbl, spacer, reviewSearch, reviewSort);
-        panel.getChildren().addAll(bar, createReviewTable());
+        Button refresh = new Button("🔄");
+        refresh.setOnAction(e -> {
+            reviewSearch.clear();
+            applyReviewFilters();
+        });
+        bar.getChildren().addAll(lbl, spacer, reviewSearch, reviewSort, refresh);
+        TableView<Review> table = createReviewTable();
+        VBox.setVgrow(table, Priority.ALWAYS);
+        panel.getChildren().addAll(bar, table);
         return panel;
     }
 
@@ -205,13 +250,19 @@ public class AdminController {
         invSearch = new TextField(); invSearch.setPromptText("🔍 Search stock...");
         invSearch.textProperty().addListener((o, ov, nv) -> loadInventory());
 
-        invSort = new ComboBox<>(FXCollections.observableArrayList("ID (Oldest First)", "Stock (Low to High)", "Stock (High to Low)"));
+        invSort = new ComboBox<>(FXCollections.observableArrayList("ID (Oldest First)", "ID (Newest First)", "Stock (Low to High)", "Stock (High to Low)"));
         invSort.setValue("ID (Oldest First)");
         invSort.setOnAction(e -> loadInventory());
 
-        bar.getChildren().addAll(edit, spacer, invSearch, invSort);
+        Button refresh = new Button("🔄");
+        refresh.setOnAction(e -> {
+            invSearch.clear();
+            loadInventory();
+        });
+        bar.getChildren().addAll(edit, spacer, invSearch, invSort, refresh);
         TableView<Product> table = createInventoryTable();
         edit.setOnAction(e -> { Product s = table.getSelectionModel().getSelectedItem(); if (s != null) handleInventoryDialog(s); });
+        VBox.setVgrow(table, Priority.ALWAYS);
         panel.getChildren().addAll(bar, table);
         return panel;
     }
@@ -296,17 +347,28 @@ public class AdminController {
         });
 
         dialog.showAndWait().ifPresent(p -> {
-            try { if (existing == null) productService.addProduct(p); else productService.updateProduct(p); loadInitialData(); }
+            try { 
+                if (existing == null) productService.createProduct(convertToDTO(p)); 
+                else productService.updateProduct(p.getProductId(), convertToDTO(p)); 
+                DataEventBus.publish(); 
+            }
             catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
         });
+    }
+
+    private com.ecommerce.dto.ProductDTO convertToDTO(Product p) {
+        return new com.ecommerce.dto.ProductDTO(p.getProductId(), p.getName(), p.getDescription(), p.getPrice(), p.getCategoryId(), p.getStockQuantity());
     }
 
     private void handleDeleteProduct(Product selected) {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Remove " + selected.getName() + "?", ButtonType.YES, ButtonType.NO);
         confirm.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.YES) {
-                try { productService.deleteProduct(selected.getProductId()); loadInitialData(); }
-                catch (SQLException e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
+                try { 
+                    productService.deleteProduct(selected.getProductId()); 
+                    DataEventBus.publish(); 
+                }
+                catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
             }
         });
     }
@@ -317,10 +379,11 @@ public class AdminController {
         dialog.setHeaderText("Enter category name:");
         dialog.showAndWait().ifPresent(name -> {
             try {
-                if (existing == null) { Category c = new Category(); c.setName(name); categoryDAO.addCategory(c); }
-                else { existing.setName(name); categoryDAO.updateCategory(existing); }
-                loadInitialData();
-            } catch (SQLException e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
+                com.ecommerce.dto.CategoryDTO dto = new com.ecommerce.dto.CategoryDTO(existing != null ? existing.getCategoryId() : null, name, "");
+                if (existing == null) { categoryService.createCategory(dto); }
+                else { categoryService.updateCategory(existing.getCategoryId(), dto); }
+                DataEventBus.publish();
+            } catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
         });
     }
 
@@ -328,8 +391,11 @@ public class AdminController {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Remove category " + selected.getName() + "?", ButtonType.YES, ButtonType.NO);
         confirm.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.YES) {
-                try { categoryDAO.deleteCategory(selected.getCategoryId()); loadInitialData(); }
-                catch (SQLException e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
+                try { 
+                    categoryService.deleteCategory(selected.getCategoryId()); 
+                    DataEventBus.publish(); 
+                }
+                catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
             }
         });
     }
@@ -339,8 +405,12 @@ public class AdminController {
         dialog.setTitle("Update Stock");
         dialog.setHeaderText("Update stock for: " + product.getName());
         dialog.showAndWait().ifPresent(qty -> {
-            try { product.setStockQuantity(Integer.parseInt(qty)); productService.updateProduct(product); loadInventory(); }
-            catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", "Invalid quantity"); }
+            try { 
+                product.setStockQuantity(Integer.parseInt(qty)); 
+                productService.updateProduct(product.getProductId(), convertToDTO(product)); 
+                DataEventBus.publish(); 
+            }
+            catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", "Invalid quantity: " + e.getMessage()); }
         });
     }
 
@@ -371,9 +441,17 @@ public class AdminController {
             return null;
         });
         dialog.showAndWait().ifPresent(u -> {
-            try { if (existing == null) userDAO.addUser(u); else userDAO.updateUser(u); loadUsers(); }
-            catch (SQLException e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
+            try { 
+                if (existing == null) userService.createUser(convertToUserDTO(u)); 
+                else userService.updateUser(u.getUserId(), convertToUserDTO(u)); 
+                DataEventBus.publish(); 
+            }
+            catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
         });
+    }
+
+    private com.ecommerce.dto.UserDTO convertToUserDTO(User u) {
+        return new com.ecommerce.dto.UserDTO(u.getUserId() != 0 ? u.getUserId() : null, u.getName(), u.getEmail(), u.getRole(), u.getPassword(), u.getLocation());
     }
 
     private void handleDeleteUser(User selected) {
@@ -381,19 +459,15 @@ public class AdminController {
         Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Remove user " + selected.getName() + "?", ButtonType.YES, ButtonType.NO);
         confirm.showAndWait().ifPresent(btn -> {
             if (btn == ButtonType.YES) {
-                try { userDAO.deleteUser(selected.getUserId()); loadUsers(); }
-                catch (SQLException e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
+                try { 
+                    userService.deleteUser(selected.getUserId()); 
+                    DataEventBus.publish(); 
+                }
+                catch (Exception e) { showAlert(Alert.AlertType.ERROR, "Error", e.getMessage()); }
             }
         });
     }
 
-    private void handleSeedData() {
-        try (Connection conn = DatabaseConnection.getConnection(); Statement stmt = conn.createStatement()) {
-            stmt.execute("INSERT INTO Categories (name) VALUES ('Smartphones'), ('Laptops'), ('Audio'), ('Wearables'), ('Accessories') ON CONFLICT DO NOTHING");
-            stmt.execute("INSERT INTO Products (name, description, price, category_id) SELECT 'Seed Product', 'Sample', 99.99, category_id FROM Categories LIMIT 1 ON CONFLICT DO NOTHING");
-            loadInitialData(); showAlert(Alert.AlertType.INFORMATION, "Success", "Sample data populated!");
-        } catch (SQLException e) { showAlert(Alert.AlertType.ERROR, "Seed Failed", e.getMessage()); }
-    }
 
     // --- TABLE GENERATORS ---
 
@@ -431,6 +505,7 @@ public class AdminController {
         addColumn(t, "ID", 60, d -> new SimpleObjectProperty<Object>(d.getUserId()));
         addColumn(t, "Name", 200, d -> new SimpleStringProperty(d.getName()));
         addColumn(t, "Email", 250, d -> new SimpleStringProperty(d.getEmail()));
+        addColumn(t, "Location", 150, d -> new SimpleStringProperty(d.getLocation()));
         addColumn(t, "Role", 100, d -> new SimpleStringProperty(d.getRole()));
         return t;
     }
@@ -456,7 +531,9 @@ public class AdminController {
 
     private void applyOrderFilters() {
         try {
-            List<Order> all = orderDAO.getAllOrders();
+            List<Order> all = orderService.getAllOrders();
+            // For now, let's just assume we want all orders if userId is 0 or handled by service
+            // Simplification: load from repository directly via service if available
             String search = orderSearch.getText().toLowerCase();
             List<Order> filtered = all.stream().filter(o -> 
                 String.valueOf(o.getOrderId()).contains(search) || 
@@ -470,20 +547,41 @@ public class AdminController {
             else if ("Status".equals(sort)) filtered.sort(Comparator.comparing(Order::getStatus));
 
             orderList.setAll(filtered);
-        } catch (SQLException e) {}
+        } catch (Exception e) {}
     }
 
     private TableView<Review> createReviewTable() {
         TableView<Review> t = new TableView<>(reviewList);
-        addColumn(t, "Product", 200, d -> new SimpleStringProperty(d.getProductName()));
-        addColumn(t, "Rating", 80, d -> new SimpleStringProperty("\u2B50".repeat(d.getRating())));
-        addColumn(t, "Comment", 400, d -> new SimpleStringProperty(d.getComment()));
+        addColumn(t, "ID", 60, d -> new SimpleObjectProperty<Object>(d.getReviewId()));
+        addColumn(t, "Product", 180, d -> new SimpleStringProperty(d.getProductName()));
+        addColumn(t, "User", 120, d -> new SimpleStringProperty(d.getUserName()));
+        
+        TableColumn<Review, String> ratingCol = new TableColumn<>("Rating");
+        ratingCol.setPrefWidth(120);
+        ratingCol.setCellValueFactory(data -> new SimpleStringProperty("⭐".repeat(data.getValue().getRating())));
+        ratingCol.setCellFactory(column -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    setStyle("-fx-text-fill: #ffcc00; -fx-font-weight: bold;");
+                }
+            }
+        });
+        t.getColumns().add(ratingCol);
+        
+        addColumn(t, "Comment", 350, d -> new SimpleStringProperty(d.getComment()));
+        t.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         return t;
     }
 
     private void applyReviewFilters() {
         try {
-            List<Review> all = reviewDAO.getAllReviews();
+            List<Review> all = reviewRepository.findAll();
             String search = reviewSearch.getText().toLowerCase();
             List<Review> filtered = all.stream().filter(r -> 
                 r.getProductName().toLowerCase().contains(search) || 
@@ -496,14 +594,36 @@ public class AdminController {
             else if ("Product Name".equals(sort)) filtered.sort(Comparator.comparing(Review::getProductName));
 
             reviewList.setAll(filtered);
-        } catch (SQLException e) {}
+        } catch (Exception e) {}
     }
 
     private TableView<Product> createInventoryTable() {
         TableView<Product> t = new TableView<>(productList);
         addColumn(t, "ID", 60, d -> new SimpleObjectProperty<>(d.getProductId()));
-        addColumn(t, "Product Name", 300, d -> new SimpleStringProperty(d.getName()));
-        addColumn(t, "In Stock", 120, d -> new SimpleObjectProperty<>(d.getStockQuantity()));
+        addColumn(t, "Product Name", 250, d -> new SimpleStringProperty(d.getName()));
+        
+        TableColumn<Product, Integer> stockCol = new TableColumn<>("In Stock");
+        stockCol.setPrefWidth(120);
+        stockCol.setCellValueFactory(data -> new SimpleObjectProperty<>(data.getValue().getStockQuantity()));
+        stockCol.setCellFactory(column -> new TableCell<Product, Integer>() {
+            @Override
+            protected void updateItem(Integer item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item.toString());
+                    if (item <= 5) setStyle("-fx-text-fill: #ff4d4d; -fx-font-weight: bold;"); // Red
+                    else if (item <= 20) setStyle("-fx-text-fill: #ffcc00; -fx-font-weight: bold;"); // Yellow
+                    else setStyle("-fx-text-fill: #38b86c; -fx-font-weight: bold;"); // Green
+                }
+            }
+        });
+        t.getColumns().add(stockCol);
+        
+        addColumn(t, "Price", 100, d -> new SimpleStringProperty(String.format("$%.2f", d.getPrice())));
+        t.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         return t;
     }
 
@@ -511,18 +631,48 @@ public class AdminController {
 
     private void loadInitialData() { 
         try { 
-            categories = categoryDAO.getAllCategories(); 
+            String catSortVal = (catSort != null) ? catSort.getValue() : "ID ASC";
+            String catSortBy = "categoryId";
+            String catDir = "asc";
+            if ("ID DESC".equals(catSortVal)) { catSortBy = "categoryId"; catDir = "desc"; }
+            else if ("Name A-Z".equals(catSortVal)) { catSortBy = "name"; catDir = "asc"; }
+            else if ("Name Z-A".equals(catSortVal)) { catSortBy = "name"; catDir = "desc"; }
+
+            categories = categoryService.getCategories(0, 500, catSortBy, catDir, (catSearch != null ? catSearch.getText() : null)).getContent(); 
             categoryList.setAll(categories);
+            
             String search = (productSearch != null) ? productSearch.getText() : "";
-            String sort = (productSort != null) ? productSort.getValue() : "ID (Oldest First)";
-            productList.setAll(productService.searchProducts(search, null, 1, 500, sort));
-        } catch (SQLException e) {} 
+            String sortVal = (productSort != null) ? productSort.getValue() : "ID (Oldest First)";
+            String sortBy = "productId";
+            String dir = "asc";
+
+            if ("ID (Newest First)".equals(sortVal)) { sortBy = "productId"; dir = "desc"; }
+            else if ("Name (A-Z)".equals(sortVal)) { sortBy = "name"; dir = "asc"; }
+            else if ("Name (Z-A)".equals(sortVal)) { sortBy = "name"; dir = "desc"; }
+            else if ("Price (Low to High)".equals(sortVal)) { sortBy = "price"; dir = "asc"; }
+            else if ("Price (High to Low)".equals(sortVal)) { sortBy = "price"; dir = "desc"; }
+
+            productList.setAll(productService.getProducts(0, 500, sortBy, dir, search, null, null, null).getContent());
+        } catch (Exception e) {
+            System.err.println("[AdminController] Error loading initial data: " + e.getMessage());
+            e.printStackTrace();
+        } 
     }
 
     private void loadUsers() { 
         try { 
-            userList.setAll(userDAO.getAllUsers().stream().filter(u -> !"ADMIN".equals(u.getRole())).toList()); 
-        } catch (SQLException e) {} 
+            String sortVal = (userSort != null) ? userSort.getValue() : "ID ASC";
+            String sortBy = "userId";
+            String dir = "asc";
+            
+            if ("ID DESC".equals(sortVal)) { sortBy = "userId"; dir = "desc"; }
+            else if ("Name A-Z".equals(sortVal)) { sortBy = "name"; dir = "asc"; }
+            else if ("Name Z-A".equals(sortVal)) { sortBy = "name"; dir = "desc"; }
+            else if ("Role".equals(sortVal)) { sortBy = "role"; dir = "asc"; }
+
+            userList.setAll(userService.getAllUsers(0, 500, sortBy, dir, (userSearch != null ? userSearch.getText() : null)).getContent()
+                .stream().filter(u -> !"ADMIN".equals(u.getRole())).toList()); 
+        } catch (Exception e) {} 
     }
 
     private void loadOrders() { applyOrderFilters(); }
@@ -531,9 +681,16 @@ public class AdminController {
     private void loadInventory() { 
         try {
             String search = (invSearch != null) ? invSearch.getText() : "";
-            String sort = (invSort != null) ? invSort.getValue() : "ID (Oldest First)";
-            productList.setAll(productService.searchProducts(search, null, 1, 500, sort)); 
-        } catch (SQLException e) {}
+            String sortVal = (invSort != null) ? invSort.getValue() : "ID (Oldest First)";
+            String sortBy = "productId";
+            String dir = "asc";
+
+            if ("ID (Newest First)".equals(sortVal)) { sortBy = "productId"; dir = "desc"; }
+            else if ("Stock (Low to High)".equals(sortVal)) { sortBy = "stockQuantity"; dir = "asc"; }
+            else if ("Stock (High to Low)".equals(sortVal)) { sortBy = "stockQuantity"; dir = "desc"; }
+
+            productList.setAll(productService.getProducts(0, 500, sortBy, dir, search, null, null, null).getContent()); 
+        } catch (Exception e) {}
     }
 
     private <T> void addColumn(TableView<T> t, String name, double width, java.util.function.Function<T, ObservableValue<?>> f) {

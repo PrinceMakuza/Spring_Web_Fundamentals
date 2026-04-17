@@ -1,12 +1,14 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.service.AuthService;
+import com.ecommerce.util.SpringContextBridge;
 import com.ecommerce.util.UserContext;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import java.sql.SQLException;
+import com.ecommerce.util.DataEventBus;
+import javafx.beans.property.SimpleStringProperty;
 import java.util.regex.Pattern;
 
 /**
@@ -14,7 +16,7 @@ import java.util.regex.Pattern;
  * Refactored for FXML compatibility and clear separation of concerns.
  */
 public class ProfileController {
-    private final AuthService authService = new AuthService();
+    private final AuthService authService = SpringContextBridge.getBean(AuthService.class);
     
     @FXML private Label nameDisplayLabel;
     @FXML private Label emailDisplayLabel;
@@ -44,6 +46,9 @@ public class ProfileController {
 
     @FXML
     public void initialize() {
+        // Subscribe to real-time events
+        DataEventBus.subscribe(this::refreshUserInfo);
+        
         refreshUserInfo();
         
         // Bind bidirectional for password toggling
@@ -51,6 +56,12 @@ public class ProfileController {
             passVisible.textProperty().bindBidirectional(passField.textProperty());
             confirmPassVisible.textProperty().bindBidirectional(confirmPassField.textProperty());
         }
+    }
+
+    @FXML
+    public void handleRefresh() {
+        refreshUserInfo();
+        showSuccess("Profile reloaded");
     }
 
     private void refreshUserInfo() {
@@ -125,9 +136,10 @@ public class ProfileController {
         try {
             authService.updateProfile(UserContext.getCurrentUserId(), name, email, location, pass);
             refreshUserInfo();
+            DataEventBus.publish();
             exitEditMode();
             showSuccess("Profile updated successfully!");
-        } catch (SQLException e) {
+        } catch (Exception e) {
             showError("Update failed: " + e.getMessage());
         }
     }

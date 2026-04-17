@@ -20,7 +20,11 @@
                     <Insets bottom="35.0" left="35.0" right="35.0" top="35.0" />
                 </padding>
 
-                <Label text="👤 My Profile" style="-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: white;" />
+                <HBox alignment="CENTER_LEFT" spacing="10.0">
+                    <Label text="👤 My Profile" style="-fx-font-size: 26px; -fx-font-weight: bold; -fx-text-fill: white;" />
+                    <Region HBox.hgrow="ALWAYS" />
+                    <Button onAction="#handleRefresh" styleClass="button-secondary" text="🔄" />
+                </HBox>
                 <Label text="Manage your personal information and security" style="-fx-text-fill: #b0b0b0;" />
                 
                 <Separator style="-fx-background-color: #333;" />
@@ -54,7 +58,7 @@
                             <PasswordField fx:id="passField" prefHeight="40.0" promptText="New Password" />
                             <TextField fx:id="passVisible" managed="false" prefHeight="40.0" promptText="New Password" visible="false" />
                         </StackPane>
-                        <Button onAction="#togglePassVisibility" prefHeight="40.0" prefWidth="40.0" styleClass="button-secondary" text="◎" />
+                        <Button onAction="#togglePassVisibility" prefHeight="40.0" prefWidth="48.0" style="-fx-background-color: #2a2a2a; -fx-text-fill: #aaa; -fx-font-size: 18px; -fx-cursor: hand; -fx-border-color: #444; -fx-border-radius: 5; -fx-background-radius: 5; -fx-padding: 0;" text="◎" />
                     </HBox>
                     
                     <Label style="-fx-font-weight: bold;" text="Confirm New Password" textFill="WHITE" />
@@ -63,7 +67,7 @@
                             <PasswordField fx:id="confirmPassField" prefHeight="40.0" promptText="Confirm New Password" />
                             <TextField fx:id="confirmPassVisible" managed="false" prefHeight="40.0" promptText="Confirm New Password" visible="false" />
                         </StackPane>
-                        <Button onAction="#togglePassVisibility" prefHeight="40.0" prefWidth="40.0" styleClass="button-secondary" text="◎" />
+                        <Button onAction="#togglePassVisibility" prefHeight="40.0" prefWidth="48.0" style="-fx-background-color: #2a2a2a; -fx-text-fill: #aaa; -fx-font-size: 18px; -fx-cursor: hand; -fx-border-color: #444; -fx-border-radius: 5; -fx-background-radius: 5; -fx-padding: 0;" text="◎" />
                     </HBox>
                 </VBox>
 

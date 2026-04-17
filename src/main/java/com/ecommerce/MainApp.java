@@ -1,13 +1,16 @@
 package com.ecommerce;
 
+import com.ecommerce.SmartECommerceApplication;
 import com.ecommerce.controller.LoginController;
 import com.ecommerce.controller.DashboardController;
-import com.ecommerce.dao.DatabaseConnection;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import org.springframework.boot.SpringApplication;
+import org.springframework.context.ConfigurableApplicationContext;
 
 import java.io.IOException;
 
@@ -19,6 +22,13 @@ public class MainApp extends Application {
 
     private Stage primaryStage;
     private Scene mainScene;
+    private ConfigurableApplicationContext springContext;
+
+    @Override
+    public void init() throws Exception {
+        // Start Spring Application Context in the same JVM
+        springContext = SpringApplication.run(SmartECommerceApplication.class);
+    }
 
     @Override
     public void start(Stage primaryStage) {
@@ -78,7 +88,10 @@ public class MainApp extends Application {
 
     @Override
     public void stop() {
-        DatabaseConnection.closePool();
+        if (springContext != null) {
+            springContext.close();
+        }
+        Platform.exit();
     }
 
     public static void main(String[] args) {

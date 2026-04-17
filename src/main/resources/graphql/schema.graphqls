@@ -1,0 +1,68 @@
+# GraphQL Schema for Smart E-Commerce System
+
+type Query {
+    # Fetch products with pagination and optional filtering
+    products(page: Int = 0, size: Int = 10, name: String, categoryId: Int, minPrice: Float, maxPrice: Float): ProductPage!
+
+    # Fetch a single product by ID
+    product(id: ID!): Product
+
+    # Fetch all categories
+    categories: [Category!]!
+
+    # Fetch all users
+    users: [User!]!
+}
+
+type Mutation {
+    # Create a new product
+    createProduct(input: ProductInput!): Product!
+
+    # Update an existing product
+    updateProduct(id: ID!, input: ProductInput!): Product!
+
+    # Delete a product by ID
+    deleteProduct(id: ID!): Boolean!
+}
+
+type Product {
+    productId: ID!
+    name: String!
+    description: String
+    price: Float!
+    category: Category!
+    stockQuantity: Int!
+    createdAt: String
+}
+
+type Category {
+    categoryId: ID!
+    name: String!
+    description: String
+    createdAt: String
+}
+
+type User {
+    userId: ID!
+    name: String!
+    email: String!
+    role: String
+    location: String
+    createdAt: String
+}
+
+type ProductPage {
+    content: [Product!]!
+    totalPages: Int!
+    totalElements: Int!
+    number: Int!
+    size: Int!
+}
+
+input ProductInput {
+    name: String!
+    description: String
+    price: Float!
+    categoryId: Int!
+    stockQuantity: Int
+}

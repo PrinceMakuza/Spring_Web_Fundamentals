@@ -1,23 +1,50 @@
 package com.ecommerce.model;
 
+import jakarta.persistence.*;
+import jakarta.validation.constraints.*;
+
+@Entity
+@Table(name = "products")
 public class Product {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int productId;
+
+    @Column(updatable = false)
+    private java.time.LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = java.time.LocalDateTime.now();
+    }
+
+    @NotBlank(message = "Product name is required")
+    @Column(unique = true, nullable = false)
     private String name;
+
+    @Column(columnDefinition = "TEXT")
     private String description;
+
+    @DecimalMin(value = "0.0", message = "Price must be greater than or equal to 0")
+    @Column(nullable = false)
     private double price;
-    private int categoryId;
-    private String categoryName;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "category_id")
+    private Category category;
+
+    @Min(value = 0, message = "Stock quantity cannot be negative")
+    @Column(nullable = false, columnDefinition = "integer default 0")
     private int stockQuantity;
 
     public Product() {}
 
-    public Product(int productId, String name, String description, double price, int categoryId, String categoryName, int stockQuantity) {
+    public Product(int productId, String name, String description, double price, Category category, int stockQuantity) {
         this.productId = productId;
         this.name = name;
         this.description = description;
         this.price = price;
-        this.categoryId = categoryId;
-        this.categoryName = categoryName;
+        this.category = category;
         this.stockQuantity = stockQuantity;
     }
 
@@ -34,14 +61,52 @@ public class Product {
     public double getPrice() { return price; }
     public void setPrice(double price) { this.price = price; }
 
-    public int getCategoryId() { return categoryId; }
-    public void setCategoryId(int categoryId) { this.categoryId = categoryId; }
+    public Category getCategory() { return category; }
+    public void setCategory(Category category) { this.category = category; }
 
-    public String getCategoryName() { return categoryName; }
-    public void setCategoryName(String categoryName) { this.categoryName = categoryName; }
+    // Backward-compatible convenience methods for existing JavaFX code
+    @Transient
+    public int getCategoryId() {
+        return category != null ? category.getCategoryId() : 0;
+    }
+
+    public void setCategoryId(int categoryId) {
+        if (this.category == null) {
+            this.category = new Category();
+        }
+        this.category.setCategoryId(categoryId);
+    }
+
+    @Transient
+    public String getCategoryName() {
+        return category != null ? category.getName() : "";
+    }
+
+    public void setCategoryName(String categoryName) {
+        if (this.category == null) {
+            this.category = new Category();
+        }
+        this.category.setName(categoryName);
+    }
 
     public int getStockQuantity() { return stockQuantity; }
     public void setStockQuantity(int stockQuantity) { this.stockQuantity = stockQuantity; }
+
+    @Transient
+    public double getAverageRating() {
+        // This is a placeholder that will be supported by the Service loading reviews if needed.
+        // For now, let's return a default or use a transient field if we populate it.
+        return 0.0; 
+    }
+
+    @Transient
+    public String getRatingStars() {
+        double avg = getAverageRating();
+        int stars = (int) Math.round(avg);
+        return "⭐".repeat(Math.max(0, stars)) + String.format(" (%.1f)", avg);
+    }
+
+    public java.time.LocalDateTime getCreatedAt() { return createdAt; }
 
     @Override
     public String toString() {
@@ -49,7 +114,6 @@ public class Product {
                 "productId=" + productId +
                 ", name='" + name + '\'' +
                 ", price=" + price +
-                ", categoryName='" + categoryName + '\'' +
                 ", stockQuantity=" + stockQuantity +
                 '}';
     }

@@ -2,6 +2,8 @@ package com.ecommerce.service;
 
 import com.ecommerce.util.PerformanceMonitor;
 import com.ecommerce.util.ValidationRunner;
+import org.springframework.stereotype.Service;
+
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -10,6 +12,7 @@ import java.nio.file.Paths;
  * ReportService handles the orchestration of system reports.
  * Responsible for running measurements and saving them to the file system.
  */
+@Service
 public class ReportService {
 
     public String generatePerformanceReport() throws Exception {

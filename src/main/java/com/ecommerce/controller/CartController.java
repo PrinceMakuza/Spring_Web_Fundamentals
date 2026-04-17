@@ -2,7 +2,9 @@ package com.ecommerce.controller;
 
 import com.ecommerce.model.CartItem;
 import com.ecommerce.service.CartService;
+import com.ecommerce.util.SpringContextBridge;
 import com.ecommerce.util.UserContext;
+import com.ecommerce.util.DataEventBus;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
 import javafx.geometry.Insets;
@@ -11,16 +13,15 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import java.sql.SQLException;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * CartController handles shopping cart interactions and layout.
- * Refactored for FXML compatibility and clean orchestration.
+ * Updated with quantity +/- buttons and individual item checkout.
  */
 public class CartController {
-    private final CartService cartService = new CartService();
+    private final CartService cartService = SpringContextBridge.getBean(CartService.class);
     
     @FXML private VBox itemsContainer;
     @FXML private Label totalLabel;
@@ -34,16 +35,19 @@ public class CartController {
         if (sortCombo != null) {
             sortCombo.setItems(FXCollections.observableArrayList("Name (A-Z)", "Price (Low to High)", "Price (High to Low)"));
         }
+        
+        // Subscribe to real-time sync
+        DataEventBus.subscribe(this::loadCart);
+        
         loadCart();
     }
 
+    @FXML
     public void loadCart() {
         try {
             allItems = cartService.getCartItems(UserContext.getCurrentUserId());
             filterAndDisplay();
-        } catch (SQLException e) {
-            showError("Load Error", e.getMessage());
-        }
+        } catch (Exception e) {}
     }
 
     @FXML
@@ -80,7 +84,7 @@ public class CartController {
     }
 
     private HBox buildItemRow(CartItem item) {
-        HBox row = new HBox(20);
+        HBox row = new HBox(15);
         row.setAlignment(Pos.CENTER_LEFT);
         row.setPadding(new Insets(15));
         row.getStyleClass().add("card");
@@ -89,50 +93,67 @@ public class CartController {
         Label name = new Label(item.getProductName());
         name.getStyleClass().add("label-bright");
         name.setFont(Font.font("System", FontWeight.BOLD, 18));
-        
         Label price = new Label(String.format("$%.2f each", item.getUnitPrice()));
         price.getStyleClass().add("label-muted");
         details.getChildren().addAll(name, price);
         HBox.setHgrow(details, Priority.ALWAYS);
 
-        TextField qtyField = new TextField(String.valueOf(item.getQuantity()));
-        qtyField.setPrefWidth(60);
-        qtyField.getStyleClass().add("form-field");
-        qtyField.setOnAction(e -> updateQty(item.getCartItemId(), qtyField.getText()));
+        // Quantity Controls [-] [Qty] [+]
+        HBox qtyBox = new HBox(5);
+        qtyBox.setAlignment(Pos.CENTER);
+        Button minBtn = new Button("-");
+        minBtn.setStyle("-fx-font-weight: bold; -fx-min-width: 30;");
+        minBtn.setOnAction(e -> updateQty(item.getCartItemId(), item.getQuantity() - 1));
+        
+        Label qtyLabel = new Label(String.valueOf(item.getQuantity()));
+        qtyLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-min-width: 30; -fx-alignment: center;");
+        
+        Button plusBtn = new Button("+");
+        plusBtn.setStyle("-fx-font-weight: bold; -fx-min-width: 30;");
+        plusBtn.setOnAction(e -> updateQty(item.getCartItemId(), item.getQuantity() + 1));
+        
+        qtyBox.getChildren().addAll(minBtn, qtyLabel, plusBtn);
 
         Label subtotal = new Label(String.format("$%.2f", item.getSubtotal()));
         subtotal.getStyleClass().add("label-bright");
-        subtotal.setStyle("-fx-text-fill: #38b86c; -fx-font-weight: bold; -fx-font-size: 16px;");
-        subtotal.setPrefWidth(120);
-        subtotal.setAlignment(Pos.CENTER_RIGHT);
+        subtotal.setStyle("-fx-text-fill: #38b86c; -fx-font-weight: bold; -fx-min-width: 100; -fx-alignment: center-right;");
 
-        Button removeBtn = new Button("🗑");
-        removeBtn.getStyleClass().add("button-danger");
-        removeBtn.setStyle("-fx-font-size: 14px;");
-        removeBtn.setOnAction(e -> {
+        // Action Buttons
+        Button buyNowBtn = new Button("Buy Now");
+        buyNowBtn.getStyleClass().add("button-success");
+        buyNowBtn.setStyle("-fx-font-size: 11px;");
+        buyNowBtn.setOnAction(e -> {
             try {
-                cartService.removeFromCart(item.getCartItemId());
-                loadCart();
-            } catch (SQLException ex) {
-                showError("Remove Error", ex.getMessage());
+                cartService.checkoutSingleItem(item.getCartItemId());
+                showInfo("Success", "Ordered " + item.getProductName() + " successfully!");
+            } catch (Exception ex) {
+                showError("Order Failed", ex.getMessage());
             }
         });
 
-        row.getChildren().addAll(details, new Label("Qty:"), qtyField, subtotal, removeBtn);
+        Button removeBtn = new Button("🗑");
+        removeBtn.getStyleClass().add("button-danger");
+        removeBtn.setOnAction(e -> {
+            try {
+                cartService.removeFromCart(item.getCartItemId());
+            } catch (Exception ex) {
+                showError("Error", ex.getMessage());
+            }
+        });
+
+        row.getChildren().addAll(details, qtyBox, subtotal, buyNowBtn, removeBtn);
         return row;
     }
 
-    private void updateQty(int itemId, String qtyStr) {
+    private void updateQty(int itemId, int newQty) {
         try {
-            int qty = Integer.parseInt(qtyStr);
-            if (qty <= 0) {
-                showError("Validation", "Quantity must be greater than zero.");
-                return;
+            if (newQty <= 0) {
+                cartService.removeFromCart(itemId);
+            } else {
+                cartService.updateQuantity(itemId, newQty);
             }
-            cartService.updateQuantity(itemId, qty);
-            loadCart();
-        } catch (NumberFormatException | SQLException e) {
-            showError("Update Error", "Invalid quantity or update failed.");
+        } catch (Exception e) {
+            showError("Update Error", "Update failed: " + e.getMessage());
         }
     }
 
@@ -140,26 +161,22 @@ public class CartController {
     private void handleCheckout() {
         try {
             if (cartService.checkout(UserContext.getCurrentUserId())) {
-                showInfo("Success", "Order placed successfully! Check your Order History.");
-                loadCart();
+                showInfo("Success", "Full order placed successfully!");
             } else {
                 showError("Checkout", "Your cart is empty.");
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             showError("Checkout Error", e.getMessage());
         }
     }
 
     private void showInfo(String title, String msg) {
         Alert a = new Alert(Alert.AlertType.INFORMATION, msg);
-        a.setTitle(title);
-        a.setHeaderText(null);
-        a.show();
+        a.setTitle(title); a.setHeaderText(null); a.show();
     }
 
     private void showError(String title, String msg) {
         Alert a = new Alert(Alert.AlertType.ERROR, msg);
-        a.setTitle(title);
-        a.show();
+        a.setTitle(title); a.show();
     }
 }

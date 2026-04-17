@@ -1,12 +1,12 @@
 package com.ecommerce.controller;
 
 import com.ecommerce.service.AuthService;
+import com.ecommerce.util.SpringContextBridge;
 import com.ecommerce.util.UserContext;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import java.sql.SQLException;
 import java.util.regex.Pattern;
 
 /**
@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
  * Refactored to use FXML for a clean separation of concerns.
  */
 public class LoginController {
-    private final AuthService authService = new AuthService();
+    private final AuthService authService = SpringContextBridge.getBean(AuthService.class);
     private Runnable onLoginSuccess;
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
@@ -118,9 +118,7 @@ public class LoginController {
             }
             
             if (onLoginSuccess != null) onLoginSuccess.run();
-        } catch (SQLException ex) {
-            showError("Database error: " + ex.getMessage());
-        } catch (IllegalArgumentException ex) {
+        } catch (Exception ex) {
             showError(ex.getMessage());
         }
     }
@@ -137,7 +135,7 @@ public class LoginController {
             statusLabel.setText("Registration successful! You can now sign in.");
             statusLabel.setTextFill(Color.web("#38b86c"));
             toggleMode();
-        } catch (SQLException ex) {
+        } catch (Exception ex) {
             if (ex.getMessage() != null && ex.getMessage().contains("duplicate")) {
                 showError("An account with this email already exists.");
             } else {

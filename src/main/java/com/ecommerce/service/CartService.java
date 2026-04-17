@@ -1,119 +1,149 @@
 package com.ecommerce.service;
 
-import com.ecommerce.dao.CartDAO;
-import com.ecommerce.dao.DatabaseConnection;
 import com.ecommerce.model.CartItem;
-import java.sql.*;
+import com.ecommerce.model.Order;
+import com.ecommerce.model.OrderItem;
+import com.ecommerce.model.Product;
+import com.ecommerce.model.User;
+import com.ecommerce.repository.*;
+import com.ecommerce.util.DataEventBus;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * CartService manages the shopping cart business logic.
- * Handles checkout as an atomic transaction to ensure data integrity.
+ * Uses Spring @Transactional to ensure atomic checkout.
+ * Now synchronized with DataEventBus for real-time UI updates.
  */
+@Service
 public class CartService {
-    private final CartDAO cartDAO;
+    private final CartItemRepository cartItemRepository;
+    private final ProductRepository productRepository;
+    private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
 
-    public CartService() {
-        this.cartDAO = new CartDAO();
+    public CartService(CartItemRepository cartItemRepository, 
+                       ProductRepository productRepository,
+                       UserRepository userRepository, 
+                       OrderRepository orderRepository) {
+        this.cartItemRepository = cartItemRepository;
+        this.productRepository = productRepository;
+        this.userRepository = userRepository;
+        this.orderRepository = orderRepository;
     }
 
-    public void addToCart(int userId, int productId, int quantity) throws SQLException {
-        // Real-world logic: Proactive Stock Validation
-        com.ecommerce.dao.ProductDAO productDAO = new com.ecommerce.dao.ProductDAO();
-        com.ecommerce.model.Product p = productDAO.getProductById(productId);
-        
-        if (p == null) throw new SQLException("Product not found.");
-        if (p.getStockQuantity() < quantity) {
-            throw new SQLException("Cannot add to cart: Insufficient stock (" + p.getStockQuantity() + " available)");
+    @Transactional
+    public void addToCart(int userId, int productId, int quantity) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new RuntimeException("Product not found"));
+
+        if (product.getStockQuantity() < quantity) {
+            throw new RuntimeException("Not enough stock available");
         }
 
-        int cartId = cartDAO.getOrCreateCart(userId);
-        cartDAO.addItemToCart(cartId, productId, quantity);
-    }
+        List<CartItem> existingItems = cartItemRepository.findByUser(user);
+        Optional<CartItem> matchingItem = existingItems.stream()
+                .filter(item -> item.getProduct().getProductId() == productId)
+                .findFirst();
 
-    public List<CartItem> getCartItems(int userId) throws SQLException {
-        int cartId = cartDAO.getOrCreateCart(userId);
-        return cartDAO.getCartItems(cartId);
-    }
-
-    public void updateQuantity(int cartItemId, int quantity) throws SQLException {
-        if (quantity <= 0) {
-            cartDAO.removeItem(cartItemId);
+        if (matchingItem.isPresent()) {
+            CartItem item = matchingItem.get();
+            item.setQuantity(item.getQuantity() + quantity);
+            cartItemRepository.save(item);
         } else {
-            cartDAO.updateQuantity(cartItemId, quantity);
+            CartItem item = new CartItem();
+            item.setUser(user);
+            item.setProduct(product);
+            item.setQuantity(quantity);
+            item.setUnitPrice(product.getPrice());
+            cartItemRepository.save(item);
         }
+        DataEventBus.publish();
     }
 
-    public void removeFromCart(int cartItemId) throws SQLException {
-        cartDAO.removeItem(cartItemId);
+    public List<CartItem> getCartItems(int userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return cartItemRepository.findByUser(user);
     }
 
-    /**
-     * Checkout process converts cart items to an order and updates inventory.
-     * Implements User Story 4.2: Atomicity via JDBC Transactions.
-     */
-    public boolean checkout(int userId) throws SQLException {
-        int cartId = cartDAO.getOrCreateCart(userId);
-        List<CartItem> items = cartDAO.getCartItems(cartId);
-        
+    @Transactional
+    public void updateQuantity(int cartItemId, int quantity) {
+        cartItemRepository.findById(cartItemId).ifPresent(item -> {
+            if (quantity <= 0) {
+                cartItemRepository.delete(item);
+            } else {
+                item.setQuantity(quantity);
+                cartItemRepository.save(item);
+            }
+            DataEventBus.publish();
+        });
+    }
+
+    @Transactional
+    public void removeFromCart(int cartItemId) {
+        cartItemRepository.deleteById(cartItemId);
+        DataEventBus.publish();
+    }
+
+    @Transactional
+    @CacheEvict(value = {"products", "product"}, allEntries = true)
+    public boolean checkout(int userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        List<CartItem> items = cartItemRepository.findByUser(user);
+
         if (items.isEmpty()) return false;
 
         double totalAmount = items.stream().mapToDouble(CartItem::getSubtotal).sum();
+        processCheckout(user, items, totalAmount);
+        
+        cartItemRepository.deleteByUser(user);
+        DataEventBus.publish();
+        return true;
+    }
 
-        try (Connection conn = DatabaseConnection.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                // 1. Create Order
-                int orderId;
-                String orderSql = "INSERT INTO Orders (user_id, total_amount, status) VALUES (?, ?, 'COMPLETED') RETURNING order_id";
-                try (PreparedStatement pstmt = conn.prepareStatement(orderSql)) {
-                    pstmt.setInt(1, userId);
-                    pstmt.setDouble(2, totalAmount);
-                    try (ResultSet rs = pstmt.executeQuery()) {
-                        if (rs.next()) orderId = rs.getInt(1);
-                        else throw new SQLException("Failed to create order.");
-                    }
-                }
+    @Transactional
+    @CacheEvict(value = {"products", "product"}, allEntries = true)
+    public void checkoutSingleItem(int cartItemId) {
+        CartItem cartItem = cartItemRepository.findById(cartItemId)
+                .orElseThrow(() -> new RuntimeException("Item not found"));
+        
+        User user = cartItem.getUser();
+        processCheckout(user, List.of(cartItem), cartItem.getSubtotal());
+        
+        cartItemRepository.delete(cartItem);
+        DataEventBus.publish();
+    }
 
-                // 2. Process each item
-                String itemSql = "INSERT INTO OrderItems (order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)";
-                String inventorySql = "UPDATE Inventory SET quantity_on_hand = quantity_on_hand - ? WHERE product_id = ? AND quantity_on_hand >= ?";
-                
-                try (PreparedStatement itemPstmt = conn.prepareStatement(itemSql);
-                     PreparedStatement invPstmt = conn.prepareStatement(inventorySql)) {
-                    
-                    for (CartItem item : items) {
-                        // Add to OrderItems
-                        itemPstmt.setInt(1, orderId);
-                        itemPstmt.setInt(2, item.getProductId());
-                        itemPstmt.setInt(3, item.getQuantity());
-                        itemPstmt.setDouble(4, item.getUnitPrice());
-                        itemPstmt.addBatch();
+    private void processCheckout(User user, List<CartItem> items, double totalAmount) {
+        Order order = new Order();
+        order.setUser(user);
+        order.setTotalAmount(totalAmount);
+        order.setStatus("COMPLETED");
+        order = orderRepository.save(order);
 
-                        // Deduct Inventory
-                        invPstmt.setInt(1, item.getQuantity());
-                        invPstmt.setInt(2, item.getProductId());
-                        invPstmt.setInt(3, item.getQuantity()); // Ensure enough stock
-                        int updated = invPstmt.executeUpdate();
-                        
-                        if (updated == 0) {
-                            throw new SQLException("Insufficient stock for product ID: " + item.getProductId());
-                        }
-                    }
-                    itemPstmt.executeBatch();
-                }
-
-                // 3. Clear Cart
-                cartDAO.clearCart(cartId, conn);
-
-                conn.commit();
-                return true;
-            } catch (SQLException e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(true);
+        for (CartItem cartItem : items) {
+            Product product = cartItem.getProduct();
+            if (product.getStockQuantity() < cartItem.getQuantity()) {
+                throw new RuntimeException("Insufficient stock for product: " + product.getName());
             }
+            product.setStockQuantity(product.getStockQuantity() - cartItem.getQuantity());
+            productRepository.save(product);
+
+            OrderItem orderItem = new OrderItem();
+            orderItem.setOrder(order);
+            orderItem.setProduct(product);
+            orderItem.setQuantity(cartItem.getQuantity());
+            orderItem.setUnitPrice(cartItem.getUnitPrice());
+            order.getItems().add(orderItem);
         }
     }
 }

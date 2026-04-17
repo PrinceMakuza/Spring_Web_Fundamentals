@@ -2,11 +2,15 @@ package com.ecommerce.controller;
 
 import com.ecommerce.model.Category;
 import com.ecommerce.model.Product;
-import com.ecommerce.service.ProductService;
+import com.ecommerce.service.SpringProductService;
+import com.ecommerce.service.CategoryService;
 import com.ecommerce.service.CartService;
-import com.ecommerce.dao.CategoryDAO;
+import com.ecommerce.util.SpringContextBridge;
 import com.ecommerce.util.PerformanceMonitor;
 import com.ecommerce.util.UserContext;
+import com.ecommerce.util.DataEventBus;
+import com.ecommerce.controller.ReviewDialog;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -14,17 +18,17 @@ import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
-import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * ProductController handles the user-facing product browsing view.
- * Refactored to separate UI structure from business logic using FXML.
+ * ProductController manages the customer-facing product browsing view.
+ * Now features real-time synchronization and improved quantity selection.
  */
 public class ProductController {
-    private final ProductService productService = new ProductService();
-    private final CartService cartService = new CartService();
-    private final CategoryDAO categoryDAO = new CategoryDAO();
+    private final SpringProductService productService = SpringContextBridge.getBean(SpringProductService.class);
+    private final CartService cartService = SpringContextBridge.getBean(CartService.class);
+    private final CategoryService categoryService = SpringContextBridge.getBean(CategoryService.class);
     
     @FXML private TableView<Product> productTable;
     @FXML private TextField searchField;
@@ -45,6 +49,9 @@ public class ProductController {
         setupTable();
         loadInitialData();
         
+        // Subscribe to real-time events
+        DataEventBus.subscribe(this::loadData);
+        
         // Listeners for instant filtering
         categoryFilter.setOnAction(e -> handleSearch());
         sortCombo.setOnAction(e -> handleSearch());
@@ -56,10 +63,6 @@ public class ProductController {
         nameCol.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getName()));
         nameCol.setPrefWidth(220);
 
-        TableColumn<Product, String> descCol = new TableColumn<>("Description");
-        descCol.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getDescription()));
-        descCol.setPrefWidth(280);
-
         TableColumn<Product, String> priceCol = new TableColumn<>("Price");
         priceCol.setCellValueFactory(d -> new SimpleStringProperty(String.format("$%.2f", d.getValue().getPrice())));
         priceCol.setPrefWidth(100);
@@ -69,7 +72,7 @@ public class ProductController {
         catCol.setCellValueFactory(d -> new SimpleStringProperty(d.getValue().getCategoryName()));
         catCol.setPrefWidth(140);
 
-        TableColumn<Product, String> stockCol = new TableColumn<>("Stock");
+        TableColumn<Product, String> stockCol = new TableColumn<>("In Stock");
         stockCol.setCellValueFactory(d -> new SimpleStringProperty(String.valueOf(d.getValue().getStockQuantity())));
         stockCol.setPrefWidth(100);
         stockCol.setCellFactory(column -> new TableCell<>() {
@@ -90,15 +93,14 @@ public class ProductController {
         });
 
         TableColumn<Product, Void> actionCol = new TableColumn<>("Action");
-        actionCol.setPrefWidth(140);
-        actionCol.setCellFactory(param -> new TableCell<>() {
+        actionCol.setPrefWidth(120);
+        actionCol.setCellFactory(param -> new TableCell<Product, Void>() {
             private final Button cartBtn = new Button("Add to Cart");
             {
                 cartBtn.getStyleClass().add("button-success");
                 cartBtn.setStyle("-fx-font-size: 11px; -fx-padding: 5 10;");
                 cartBtn.setOnAction(event -> handleAddToCart(getTableView().getItems().get(getIndex())));
             }
-
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
@@ -111,13 +113,39 @@ public class ProductController {
             }
         });
 
-        productTable.getColumns().addAll(nameCol, descCol, priceCol, catCol, stockCol, actionCol);
+        TableColumn<Product, Product> ratingCol = new TableColumn<>("Rating");
+        ratingCol.setPrefWidth(160);
+        ratingCol.setCellValueFactory(d -> new SimpleObjectProperty<>(d.getValue()));
+        ratingCol.setCellFactory(param -> new TableCell<Product, Product>() {
+            private final Label starLabel = new Label();
+            private final Button rateBtn = new Button("⭐ Rate");
+            private final HBox container = new HBox(10);
+            {
+                starLabel.setStyle("-fx-text-fill: #ffcc00; -fx-font-weight: bold;");
+                rateBtn.getStyleClass().add("button-primary");
+                rateBtn.setStyle("-fx-font-size: 10px; -fx-padding: 3 8;");
+                container.setAlignment(Pos.CENTER_LEFT);
+                container.getChildren().addAll(starLabel, rateBtn);
+            }
+            @Override
+            protected void updateItem(Product p, boolean empty) {
+                super.updateItem(p, empty);
+                if (empty || p == null) setGraphic(null);
+                else {
+                    starLabel.setText(p.getRatingStars());
+                    rateBtn.setOnAction(e -> new ReviewDialog(p.getProductId(), p.getName()).show());
+                    setGraphic(container);
+                }
+            }
+        });
+
+        productTable.getColumns().setAll(nameCol, priceCol, catCol, stockCol, actionCol, ratingCol);
         productTable.setItems(productList);
     }
 
     private void loadInitialData() {
         try {
-            categories = categoryDAO.getAllCategories();
+            categories = categoryService.getAllCategories();
             categoryFilter.getItems().clear();
             categoryFilter.getItems().add("All Categories");
             for (Category cat : categories) categoryFilter.getItems().add(cat.getName());
@@ -127,30 +155,27 @@ public class ProductController {
             sortCombo.setValue("Name (A-Z)");
             
             loadData();
-        } catch (SQLException e) {
-            showError("Data Error", e.getMessage());
-        }
+        } catch (Exception e) {}
     }
 
     private void loadData() {
+        PerformanceMonitor.start("ProductSearch");
         try {
-            String searchTerm = searchField.getText().trim();
-            Integer catId = getSelectedCategoryId();
-            totalProducts = productService.getSearchCount(searchTerm, catId);
+            String search = searchField.getText();
+            String sortBy = "name", dir = "asc";
+            String sortVal = sortCombo.getValue();
+            if ("Name (Z-A)".equals(sortVal)) dir = "desc";
+            else if ("Price (Low to High)".equals(sortVal)) sortBy = "price";
+            else if ("Price (High to Low)".equals(sortVal)) { sortBy = "price"; dir = "desc"; }
 
-            long startTime = System.nanoTime();
-            List<Product> products = productService.searchProducts(searchTerm, catId, currentPage, pageSize, sortCombo.getValue());
-            long elapsed = (System.nanoTime() - startTime) / 1_000_000;
-
-            PerformanceMonitor.record("Product Search", elapsed);
-            productList.setAll(products);
+            var page = productService.getProducts(currentPage - 1, pageSize, sortBy, dir, search, getSelectedCategoryId(), null, null);
+            productList.setAll(page.getContent());
+            totalProducts = (int) page.getTotalElements();
+            
             updatePaginationUI();
-
-            resultCountLabel.setText(String.format("Showing %d of %d products", products.size(), totalProducts));
-            timingLabel.setText(String.format("Query time: %dms", elapsed));
-        } catch (SQLException e) {
-            showError("Search Error", e.getMessage());
-        }
+            resultCountLabel.setText("Showing " + productList.size() + " products");
+            timingLabel.setText("Fetched in " + PerformanceMonitor.stop("ProductSearch") + "ms");
+        } catch (Exception e) {}
     }
 
     private Integer getSelectedCategoryId() {
@@ -178,19 +203,11 @@ public class ProductController {
     }
 
     @FXML
-    private void handlePrevPage() {
-        if (currentPage > 1) {
-            currentPage--;
-            loadData();
-        }
-    }
-
+    private void handlePrevPage() { if (currentPage > 1) { currentPage--; loadData(); } }
     @FXML
     private void handleNextPage() {
-        if (currentPage * pageSize < totalProducts) {
-            currentPage++;
-            loadData();
-        }
+        int totalPages = (int) Math.ceil((double) totalProducts / pageSize);
+        if (currentPage < totalPages) { currentPage++; loadData(); }
     }
 
     private void handleAddToCart(Product product) {
@@ -198,24 +215,35 @@ public class ProductController {
             showError("Out of Stock", "This item is currently unavailable.");
             return;
         }
-        try {
-            cartService.addToCart(UserContext.getCurrentUserId(), product.getProductId(), 1);
-            showInfo("Added", product.getName() + " added to your cart!");
-        } catch (SQLException e) {
-            showError("Cart Error", e.getMessage());
-        }
+
+        TextInputDialog dialog = new TextInputDialog("1");
+        dialog.setTitle("Select Quantity");
+        dialog.setHeaderText("Add " + product.getName() + " to Cart");
+        dialog.setContentText("Please enter quantity:");
+
+        Optional<String> result = dialog.showAndWait();
+        result.ifPresent(qtyStr -> {
+            try {
+                int qty = Integer.parseInt(qtyStr);
+                if (qty <= 0 || qty > product.getStockQuantity()) {
+                    showError("Invalid Quantity", "Current stock: " + product.getStockQuantity());
+                    return;
+                }
+                cartService.addToCart(UserContext.getCurrentUserId(), product.getProductId(), qty);
+                showInfo("Added", qty + " unit(s) of " + product.getName() + " added to your cart!");
+            } catch (NumberFormatException e) {
+                showError("Input Error", "Please enter a valid number.");
+            }
+        });
     }
 
     private void showInfo(String title, String msg) {
         Alert a = new Alert(Alert.AlertType.INFORMATION, msg);
-        a.setTitle(title);
-        a.setHeaderText(null);
-        a.show();
+        a.setTitle(title); a.setHeaderText(null); a.show();
     }
 
     private void showError(String title, String msg) {
         Alert a = new Alert(Alert.AlertType.ERROR, msg);
-        a.setTitle(title);
-        a.show();
+        a.setTitle(title); a.show();
     }
 }
