@@ -10,6 +10,7 @@ A Spring Boot 3.x e-commerce application with RESTful APIs, GraphQL integration,
 - **ORM**: Spring Data JPA / Hibernate
 - **API**: REST + GraphQL (coexisting on same port)
 - **Docs**: Springdoc OpenAPI (Swagger UI)
+- **GraphQL Console**: Local GraphiQL page (no external CDN)
 - **AOP**: Spring AOP (logging + performance monitoring)
 - **Validation**: Jakarta Bean Validation + custom validators
 
@@ -35,7 +36,6 @@ A Spring Boot 3.x e-commerce application with RESTful APIs, GraphQL integration,
    ```bash
    psql -U postgres -d ecommerce_db -f sql/seed.sql
    ```
-
 ### Running with Profiles
 
 ```bash
@@ -49,6 +49,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=test
 export PROD_DB_URL=jdbc:postgresql://prod-host:5432/ecommerce_db
 export PROD_DB_USERNAME=prod_user
 export PROD_DB_PASSWORD=prod_pass
+
 mvn spring-boot:run -Dspring-boot.run.profiles=prod
 ```
 
@@ -56,24 +57,13 @@ mvn spring-boot:run -Dspring-boot.run.profiles=prod
 
 ```bash
 # Terminal 1: backend API server (REST/GraphQL on port 8080)
-
-## Default dev (already active in application.yml)
 mvn spring-boot:run
-
-## Force dev explicitly
-mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
-
-## Test
-mvn spring-boot:run "-Dspring-boot.run.profiles=test"
-
-## Prod
-mvn spring-boot:run "-Dspring-boot.run.profiles=prod"
 
 # Terminal 2: JavaFX frontend only
 mvn javafx:run
 ```
 
-`javafx:run` now starts a non-web Spring context for UI wiring and does not start the embedded web server.
+**Note:** `javafx:run` starts a non-web Spring context for UI wiring and does not start the embedded web server.
 
 ---
 
@@ -93,13 +83,10 @@ http://localhost:8080/swagger-ui.html
 ```
 http://localhost:8080/graphql
 ```
-
 ### GraphiQL Interactive Explorer
 ```
-http://localhost:8080/graphiql
+http://localhost:8080/graphiql?path=/graphql
 ```
-
----
 
 ## REST API Reference
 
@@ -145,59 +132,6 @@ http://localhost:8080/graphiql
 
 ---
 
-## GraphQL API
-
-### Queries
-
-```graphql
-# Fetch products with pagination and filters
-query {
-  products(page: 0, size: 10, name: "laptop", categoryId: 1) {
-    content { productId, name, price, category { name } }
-    totalPages
-    totalElements
-  }
-}
-
-# Fetch a single product
-query {
-  product(id: 1) {
-    productId, name, description, price, stockQuantity
-    category { categoryId, name }
-  }
-}
-
-# Fetch all categories
-query {
-  categories { categoryId, name, description }
-}
-```
-
-### Mutations
-
-```graphql
-# Create product
-mutation {
-  createProduct(input: { name: "New Product", price: 29.99, categoryId: 1, stockQuantity: 100 }) {
-    productId, name
-  }
-}
-
-# Update product
-mutation {
-  updateProduct(id: 1, input: { name: "Updated", price: 39.99, categoryId: 1 }) {
-    productId, name, price
-  }
-}
-
-# Delete product
-mutation {
-  deleteProduct(id: 1)
-}
-```
-
----
-
 ## AOP Aspects
 
 ### LoggingAspect
@@ -238,6 +172,11 @@ mutation {
 2. Open `http://localhost:8080/swagger-ui.html`
 3. Explore and test all endpoints interactively
 
+### Using GraphiQL
+1. Start the application: `mvn spring-boot:run`
+2. Open `http://localhost:8080/graphiql?path=/graphql`
+3. Write and execute GraphQL queries in the interactive editor
+
 ### Using cURL
 
 ```bash
@@ -254,10 +193,16 @@ curl -X POST http://localhost:8080/api/products \
 # List products with filters
 curl "http://localhost:8080/api/products?name=laptop&sortBy=price&sortDir=desc"
 
-# GraphQL query
+# GraphQL query (POST only - GET returns 405)
 curl -X POST http://localhost:8080/graphql \
   -H "Content-Type: application/json" \
   -d '{"query":"{ product(id:1) { productId name price category { name } } }"}'
+
+# Test GraphQL endpoint health
+curl -X POST http://localhost:8080/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"{ __typename }"}'
+# Expected response: {"data":{"__typename":"Query"}}
 ```
 
 ### Test Cases
@@ -274,6 +219,7 @@ curl -X POST http://localhost:8080/graphql \
 | 8 | Delete non-existent product   | DELETE | `/api/products/999`               | 404 Not Found |
 | 9 | GraphQL fetch product         | POST   | `/graphql`                        | 200 OK   |
 | 10| GraphQL create product        | POST   | `/graphql`                        | 200 OK   |
+| 11| GraphQL GET request           | GET    | `/graphql`                        | 405 Method Not Allowed |
 
 ---
 
@@ -288,7 +234,7 @@ src/main/java/com/ecommerce/
 │   └── CategoryRestController.java     # REST: Category CRUD
 ├── service/
 │   ├── UserService.java                # User business logic
-│   ├── SpringProductService.java       # Product business logic (Spring Boot)
+│   ├── SpringProductService.java       # Product business logic
 │   └── CategoryService.java            # Category business logic
 ├── repository/
 │   ├── UserRepository.java             # JPA repository
@@ -298,7 +244,7 @@ src/main/java/com/ecommerce/
 │   ├── ApiResponse.java                # Standard response wrapper
 │   ├── UserDTO.java                    # User validation DTO
 │   ├── ProductDTO.java                 # Product validation DTO
-│   └── CategoryDTO.java               # Category validation DTO
+│   └── CategoryDTO.java                # Category validation DTO
 ├── model/
 │   ├── User.java                       # JPA entity
 │   ├── Product.java                    # JPA entity
@@ -314,10 +260,16 @@ src/main/java/com/ecommerce/
 ├── graphql/
 │   ├── ProductResolver.java            # GraphQL product resolver
 │   └── CategoryResolver.java           # GraphQL category resolver
-└── config/
-    └── GraphQLConfig.java              # GraphQL configuration
+├── config/
+│   ├── GraphQLConfig.java              # GraphQL configuration
+│   └── WebConfig.java                  # Web configuration (maps /graphiql)
+└── resources/
+    └── static/
+        └── graphiql/
+            └── index.html              # Local GraphiQL page
+
 src/main/resources/
-├── application.yml                     # Main config (active profile)
+├── application.properties              # Main config (profile activation)
 ├── application-dev.yml                 # Dev profile
 ├── application-test.yml                # Test profile
 ├── application-prod.yml                # Prod profile

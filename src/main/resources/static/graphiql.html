@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart E-Commerce | Explorer</title>
+    <!-- GraphiQL CSS from CDN -->
+    <link rel="stylesheet" href="https://unpkg.com/graphiql@3.0.6/graphiql.min.css" />
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            background: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        #graphiql {
+            height: 100vh;
+        }
+        /* Custom styling for GraphiQL to match premium look */
+        .graphiql-container {
+            --color-primary: #38b86c;
+            --color-info: #00bcd4;
+            --font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body>
+<div id="graphiql"></div>
+
+<!-- React and GraphiQL JS from CDN -->
+<script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/graphiql@3.0.6/graphiql.min.js"></script>
+
+<script>
+    const graphQLFetcher = async (graphQLParams) => {
+        const response = await fetch('/graphql', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // Optional: Add session token if required
+                // 'Authorization': 'Bearer ' + localStorage.getItem('token')
+            },
+            body: JSON.stringify(graphQLParams),
+        });
+        return response.json().catch(() => response.text());
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('graphiql'));
+    root.render(
+        React.createElement(GraphiQL, { 
+            fetcher: graphQLFetcher,
+            defaultEditorToolsVisibility: true,
+            header: React.createElement(GraphiQL.Header, null, "Smart E-Commerce API Explorer")
+        })
+    );
+</script>
+</body>
+</html>

@@ -12,4 +12,4 @@ spring:
       enabled: true
   graphql:
     graphiql:
-      enabled: true
+      enabled: false
